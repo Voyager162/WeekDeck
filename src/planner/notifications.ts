@@ -20,6 +20,10 @@ async function cancelOwned() {
   const notifications = pending.notifications.filter((n) => n.id >= 700_000 && n.id < 700_100);
   if (notifications.length) await LocalNotifications.cancel({ notifications });
 }
+export function clearNativeReminders() {
+  ++generation;
+  return nativeNotifications ? enqueue(cancelOwned) : Promise.resolve();
+}
 export function useNotifications(
   uid: string | undefined,
   localBlocks: Block[],
@@ -102,8 +106,8 @@ export function useNotifications(
   }, [uid, blocks, localBlocks, settings, refresh, ready, blocksReady]);
   useEffect(
     () => () => {
+      // Navigation stops queued work; only sign-out/deletion clears native reminders.
       ++generation;
-      if (nativeNotifications) void enqueue(cancelOwned).catch(() => {});
     },
     [uid],
   );

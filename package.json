@@ -19,7 +19,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run tests/domain.test.ts tests/planner.test.ts",
+    "test": "vitest run tests/domain.test.ts tests/planner.test.ts tests/notifications.test.ts",
     "test:rules": "firebase emulators:exec --project demo-timeblocker --only firestore \"vitest run tests/firestore.rules.test.ts\"",
     "test:e2e": "playwright test",
     "test:sync": "firebase emulators:exec --project demo-timeblocker --only auth,firestore \"playwright test\"",

@@ -191,6 +191,9 @@ h3,
   background: var(--danger);
   color: white;
 }
+[data-theme='dark'] .danger {
+  color: #35171c;
+}
 .danger-icon {
   color: var(--danger);
 }
@@ -1033,7 +1036,8 @@ h3,
 }
 .account-page {
   min-height: 100dvh;
-  padding: 24px;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
   background: var(--surface);
 }
 .account-page > header {
@@ -1589,7 +1593,8 @@ input[type='checkbox'] {
   align-items: center;
   justify-content: center;
   gap: 42px;
-  padding: 24px;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
 }
 .auth-form {
   max-width: 355px;
