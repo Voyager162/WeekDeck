@@ -1,0 +1,29 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    function validBlock(data) {
+      return data.keys().hasAll(['title', 'notes', 'category', 'startAt', 'endAt', 'completed', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['title', 'notes', 'category', 'startAt', 'endAt', 'completed', 'createdAt', 'updatedAt'])
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 120
+        && data.notes is string && data.notes.size() <= 2000
+        && data.category in ['focus', 'meeting', 'personal', 'break']
+        && data.startAt is int && data.startAt >= 0
+        && data.endAt is int && data.endAt > data.startAt
+        && data.endAt - data.startAt <= 86400000
+        && data.completed is bool
+        && data.createdAt is timestamp && data.updatedAt == request.time;
+    }
+    match /users/{uid}/blocks/{blockId} {
+      allow read, delete: if owner(uid);
+      allow create: if owner(uid) && validBlock(request.resource.data)
+        && request.resource.data.createdAt == request.time;
+      allow update: if owner(uid) && validBlock(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+    // All other paths are private until an explicit schema and rule are added.
+    match /{document=**} { allow read, write: if false; }
+  }
+}
