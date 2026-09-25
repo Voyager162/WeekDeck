@@ -4,6 +4,8 @@ A shared React + TypeScript planner, packaged with Capacitor for iPhone/Android 
 
 ## Start here
 
+The current project is connected: [Open Weekdeck](https://weekdeck-67e4b.web.app). See [project settings and deployment](docs/FIREBASE_PROJECT.md).
+
 1. Install Node.js 24 LTS.
 2. Run `npm ci`, then `npm run dev`.
 3. Follow [Firebase setup from scratch](docs/FIREBASE_SETUP.md) to connect a real account and database.
