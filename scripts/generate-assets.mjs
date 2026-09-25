@@ -17,7 +17,7 @@ const foreground = Buffer.from(
 );
 await mkdir('build/icons', { recursive: true });
 await mkdir('public', { recursive: true });
-await sharp(svg).png().toFile('build/icon.png');
+await sharp(svg).removeAlpha().png().toFile('build/icon.png');
 await sharp(svg).resize(64).png().toFile('public/favicon.png');
 for (const size of [16, 32, 48, 64, 128, 256, 512, 1024])
   await sharp(svg).resize(size).png().toFile(`build/icons/${size}x${size}.png`);
@@ -83,6 +83,7 @@ if (process.argv.includes('ios')) {
     throw new Error('Generate iOS resources on macOS with Swift installed.');
   execFileSync('swift', ['--version'], { stdio: 'inherit' });
   await sharp(svg)
+    .removeAlpha()
     .png()
     .toFile('ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png');
   const icon = await sharp(svg).resize(400).png().toBuffer();
