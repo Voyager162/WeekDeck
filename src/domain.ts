@@ -6,6 +6,7 @@ export const categories = {
 };
 export type Category = keyof typeof categories;
 export type BlockInput = {
+  color?: string;
   title: string;
   notes: string;
   category: Category;

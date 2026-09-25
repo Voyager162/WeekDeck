@@ -44,6 +44,6 @@ After shared code or configuration changes, run `npm run mobile:sync` for the mo
 
 ## Setup verification
 
-The deployed web app and a packaged Windows app passed live sign-in, block creation/editing/completion/deletion across sessions, reload persistence, and sign-out. Direct reads from another account and an anonymous session were denied. Temporary test accounts and documents were removed after verification. Local preview and emulator sync tests also passed with the live configuration present.
+The deployed weekly planner and its packaged Windows app passed live sign-in, block creation/editing/completion/deletion across sessions, reload persistence, theme synchronization, and sign-out. Direct reads from another account and an anonymous session were denied. Temporary test accounts, documents, and the isolated desktop test profile were removed after verification. Local preview and emulator sync tests also passed with the live configuration present.
 
-The verified Windows development build on this machine is `release/weekdeck-live/win-unpacked/Weekdeck.exe`. Mobile assets are synced with the cloud configuration; native iOS/Android and macOS/Linux builds still require their platform toolchains and testing.
+The verified weekly-planner Windows development build on this machine is `release/weekdeck-weekly/win-unpacked/Weekdeck.exe`. Android assets and the notification plugins are synced with the cloud configuration. iOS sync/build needs a Mac with Xcode/Swift; physical iOS/Android notification checks and macOS/Linux packaging tests remain outstanding. See [mobile reminder behavior](NOTIFICATIONS.md).

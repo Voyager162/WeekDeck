@@ -4,9 +4,16 @@ service cloud.firestore {
     function owner(uid) {
       return request.auth != null && request.auth.uid == uid;
     }
+    function fields(data, names) {
+      return data.keys().hasAll(names) && data.keys().hasOnly(names);
+    }
+    function color(value) {
+      return value in ['teal', 'blue', 'violet', 'rose', 'amber', 'green', 'cyan', 'gray'];
+    }
     function validBlock(data) {
       return data.keys().hasAll(['title', 'notes', 'category', 'startAt', 'endAt', 'completed', 'createdAt', 'updatedAt'])
-        && data.keys().hasOnly(['title', 'notes', 'category', 'startAt', 'endAt', 'completed', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['title', 'notes', 'category', 'color', 'startAt', 'endAt', 'completed', 'createdAt', 'updatedAt'])
+        && (!('color' in data) || color(data.color))
         && data.title is string && data.title.size() > 0 && data.title.size() <= 120
         && data.notes is string && data.notes.size() <= 2000
         && data.category in ['focus', 'meeting', 'personal', 'break']
@@ -22,6 +29,55 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time;
       allow update: if owner(uid) && validBlock(request.resource.data)
         && request.resource.data.createdAt == resource.data.createdAt;
+    }
+    // Reusable presets contain no ownership or privilege fields.
+    function validTemplate(data) {
+      return fields(data, ['title', 'color', 'icon', 'duration', 'updatedAt'])
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 80
+        && color(data.color)
+        && data.icon in ['book', 'briefcase', 'coffee', 'music', 'pencil', 'heart', 'dumbbell', 'sparkles']
+        && data.duration is int && data.duration >= 15 && data.duration <= 240
+        && data.updatedAt == request.time;
+    }
+    match /users/{uid}/templates/{id} {
+      allow read, delete: if owner(uid);
+      allow create, update: if owner(uid) && validTemplate(request.resource.data);
+    }
+    // Per-date planning hours use local wall-clock minutes; blocks store instants.
+    function validDay(data) {
+      return fields(data, ['enabled', 'start', 'end', 'updatedAt'])
+        && data.enabled is bool && data.start is int && data.end is int
+        && data.start >= 0 && data.end <= 1440 && data.end - data.start >= 15
+        && data.updatedAt == request.time;
+    }
+    match /users/{uid}/days/{day} {
+      allow read, delete: if owner(uid);
+      allow create, update: if owner(uid) && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && validDay(request.resource.data);
+    }
+    function validNotifications(data) {
+      return data is map
+        && fields(data, ['planning', 'day', 'time', 'advanced', 'end', 'interval', 'transitions', 'lead'])
+        && data.planning is bool && data.advanced is bool && data.transitions is bool
+        && data.day is int && data.day >= 0 && data.day <= 6
+        && data.time is int && data.time >= 0 && data.time < 1440
+        && data.end is int && data.end >= 0 && data.end < 1440
+        && data.interval in [15, 30, 45, 60, 90, 120]
+        && data.lead in [0, 5, 10]
+        && (!data.advanced || (data.end >= data.time && data.end - data.time <= 240));
+    }
+    function validSettings(data) {
+      return fields(data, ['theme', 'hourHeight', 'snap', 'timeFormat', 'weekStart', 'notifications', 'updatedAt'])
+        && data.theme in ['light', 'dark', 'sage', 'rose', 'system']
+        && data.hourHeight is int && data.hourHeight >= 48 && data.hourHeight <= 100
+        && data.snap in [5, 15, 30] && data.timeFormat in ['12', '24']
+        && data.weekStart in [0, 1] && validNotifications(data.notifications)
+        && data.updatedAt == request.time;
+    }
+    match /users/{uid}/settings/planner {
+      allow read: if owner(uid);
+      allow create, update: if owner(uid) && validSettings(request.resource.data);
+      allow delete: if owner(uid);
     }
     // All other paths are private until an explicit schema and rule are added.
     match /{document=**} { allow read, write: if false; }

@@ -40,6 +40,8 @@ npm run desktop:pack
 
 The shared app has browser tests at desktop and phone sizes, and Firebase emulator tests. These are not substitutes for building and testing each native target. Creating the native project directories does not mean iOS/Android binaries have been built. CI currently validates the shared app and backend rules on Linux; native release jobs should be added when SDKs and signing are available.
 
+The weekly board is exercised in Chromium and WebKit at 320, 390, 768 and 1440px widths. A Chromium mobile-emulation test dispatches actual touch gestures to verify long-press drawer dragging and ghost placement. WebKit runs the mouse/form/layout suite; this is not an iPhone-device test. Native local-notification delivery still requires the device checklist in [NOTIFICATIONS.md](NOTIFICATIONS.md).
+
 ## Rebuild after changes
 
 Use `npm run mobile:sync` after changing the shared UI or Firebase environment. It updates generated assets inside the native shells. Those generated assets are ignored; another checkout rebuilds them from source. Native plugin changes may require another Android Studio/Xcode dependency sync.

@@ -5,6 +5,9 @@ const config: CapacitorConfig = {
   appName: 'Weekdeck',
   webDir: 'dist',
   server: { androidScheme: 'https' },
+  plugins: {
+    LocalNotifications: { presentationOptions: ['badge', 'sound', 'banner', 'list'] },
+  },
 };
 
 export default config;

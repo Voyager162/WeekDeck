@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { defaultPreferences } from '../src/planner/model';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import {
   initializeTestEnvironment,
@@ -68,6 +69,7 @@ describe('private user schedules', () => {
     }
   });
   it.each([
+    { color: 'script' },
     { title: '' },
     { title: 'x'.repeat(121) },
     { notes: 12 },
@@ -100,5 +102,124 @@ describe('private user schedules', () => {
     await assertFails(
       updateDoc(ref, { createdAt: Timestamp.fromMillis(1), updatedAt: serverTimestamp() }),
     );
+  });
+});
+
+describe('private weekly planner configuration', () => {
+  const samples = () => [
+    {
+      path: 'templates/work',
+      data: {
+        title: 'Work',
+        color: 'blue',
+        icon: 'briefcase',
+        duration: 60,
+        updatedAt: serverTimestamp(),
+      },
+    },
+    {
+      path: 'days/2026-09-21',
+      data: { enabled: true, start: 540, end: 1020, updatedAt: serverTimestamp() },
+    },
+    { path: 'settings/planner', data: { ...defaultPreferences, updatedAt: serverTimestamp() } },
+  ];
+  it('allows owner CRUD on every new schema', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    for (const { path, data } of samples()) {
+      const ref = doc(db, `users/alice/${path}`);
+      await assertSucceeds(setDoc(ref, data));
+      await assertSucceeds(getDoc(ref));
+      await assertSucceeds(updateDoc(ref, { ...data, updatedAt: serverTimestamp() }));
+      await assertSucceeds(deleteDoc(ref));
+    }
+    await assertSucceeds(
+      setDoc(doc(db, 'users/alice/blocks/colored'), { ...block(), color: 'rose' }),
+    );
+  });
+  it('denies cross-account and unauthenticated CRUD and collection reads', async () => {
+    const owner = env.authenticatedContext('alice').firestore();
+    for (const { path, data } of samples()) {
+      await setDoc(doc(owner, `users/alice/${path}`), data);
+      for (const db of [
+        env.authenticatedContext('bob').firestore(),
+        env.unauthenticatedContext().firestore(),
+      ]) {
+        const ref = doc(db, `users/alice/${path}`);
+        await assertFails(getDoc(ref));
+        await assertFails(getDocs(collection(db, `users/alice/${path.split('/')[0]}`)));
+        await assertFails(setDoc(ref, data));
+        await assertFails(setDoc(doc(db, `users/alice/${path.split('/')[0]}/new`), data));
+        await assertFails(updateDoc(ref, { updatedAt: serverTimestamp() }));
+        await assertFails(deleteDoc(ref));
+      }
+    }
+  });
+  it('rejects missing, unexpected, and forged timestamp fields on every schema', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    for (const { path, data } of samples()) {
+      const ref = doc(db, `users/alice/${path}`);
+      await assertFails(setDoc(ref, { ...data, admin: true }));
+      await assertFails(setDoc(ref, { ...data, updatedAt: Timestamp.fromMillis(0) }));
+      await assertFails(setDoc(ref, { updatedAt: serverTimestamp() }));
+      await setDoc(ref, data);
+      await assertFails(updateDoc(ref, { owner: 'bob', updatedAt: serverTimestamp() }));
+    }
+  });
+  it.each([
+    { duration: 0 },
+    { duration: 241 },
+    { duration: 20.5 },
+    { color: '#fff' },
+    { icon: 'script' },
+    { title: 'x'.repeat(81) },
+  ])('rejects invalid presets %j', async (patch) => {
+    await assertFails(
+      setDoc(doc(env.authenticatedContext('alice').firestore(), 'users/alice/templates/a'), {
+        ...samples()[0].data,
+        ...patch,
+      }),
+    );
+  });
+  it.each([
+    { start: -1 },
+    { end: 1441 },
+    { start: 600, end: 600 },
+    { start: 539.5 },
+    { enabled: 'yes' },
+  ])('rejects invalid hours %j', async (patch) => {
+    await assertFails(
+      setDoc(doc(env.authenticatedContext('alice').firestore(), 'users/alice/days/2026-09-21'), {
+        ...samples()[1].data,
+        ...patch,
+      }),
+    );
+  });
+  it.each([
+    { theme: 'invalid' },
+    { hourHeight: 1 },
+    { hourHeight: 101 },
+    { snap: 0 },
+    { weekStart: 6 },
+    { timeFormat: 'words' },
+    { notifications: [] },
+    { notifications: { ...defaultPreferences.notifications, interval: 0 } },
+    { notifications: { ...defaultPreferences.notifications, day: 7 } },
+    {
+      notifications: { ...defaultPreferences.notifications, advanced: true, time: 1200, end: 900 },
+    },
+    { notifications: { ...defaultPreferences.notifications, advanced: true, time: 600, end: 901 } },
+    { notifications: { ...defaultPreferences.notifications, arbitrary: 'field' } },
+  ])('rejects invalid preferences %j', async (patch) => {
+    await assertFails(
+      setDoc(doc(env.authenticatedContext('alice').firestore(), 'users/alice/settings/planner'), {
+        ...samples()[2].data,
+        ...patch,
+      }),
+    );
+  });
+  it('rejects malformed date IDs and unknown settings documents', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    await assertFails(setDoc(doc(db, 'users/alice/days/admin'), samples()[1].data));
+    await assertFails(setDoc(doc(db, 'users/alice/settings/admin'), samples()[2].data));
   });
 });
