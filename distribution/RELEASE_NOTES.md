@@ -1,4 +1,6 @@
-## Weekdeck 0.2.0 by Voyager
+## Weekdeck 0.2.1 by Voyager
+
+- Windows installer upgrades existing Weekdeck installations in place and stops with a message when the same version is already installed. Existing user data is preserved. This check is included in installers starting with 0.2.1; older installer files remain unchanged.
 
 - Weekly time blocking with account sync, reusable presets, themes, responsive layouts, shared day hours, and keyboard day copying.
 - Read-only schedule sharing by verified email, for one week or all weeks, with invitation acceptance and access revocation.

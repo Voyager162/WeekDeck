@@ -1,6 +1,6 @@
 {
   "name": "weekdeck",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "A personal time-blocking planner for mobile and desktop.",
   "author": "Voyager",
@@ -82,6 +82,9 @@
       ],
       "category": "public.app-category.productivity",
       "icon": "build/icon.png"
+    },
+    "nsis": {
+      "include": "desktop/installer.nsh"
     },
     "win": {
       "target": [

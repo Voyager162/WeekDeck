@@ -1,6 +1,6 @@
 # Install Weekdeck
 
-Publisher: Voyager. Weekdeck 0.2.0.
+Publisher: Voyager. Weekdeck 0.2.1.
 
 ## iPhone, iPad, and Android
 
@@ -18,6 +18,8 @@ No store account or purchase is needed. Web Push requires the separately configu
 | Linux 64-bit Intel/AMD   | `*-linux-x86_64.AppImage` |
 
 Run the Windows installer, drag the Mac app into Applications, or make the Linux AppImage executable and open it. Only trust https://github.com/Voyager162/WeekDeck/releases and check SHA256SUMS.txt.
+
+Windows installers from 0.2.1 onward upgrade an older Weekdeck installation in place and preserve its user data. If that installer's version is already installed, a message appears and installation stops without changing the app. Silent installs return exit code 1638 for this case. Previously downloaded installers do not gain this check retroactively. Mac DMGs use Finder's Replace action; Linux AppImages are standalone files, not Windows-style installers.
 
 Windows is unsigned; Mac builds are ad-hoc signed, not notarized. Per-app operating-system warnings may appear. Do not disable OS security globally. Some Linux distributions require FUSE 2. There is no automatic updater.
 

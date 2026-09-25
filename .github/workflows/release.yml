@@ -55,6 +55,10 @@ jobs:
       - name: Launch packaged Windows app
         if: matrix.platform == 'win'
         run: node scripts/smoke-desktop.mjs release/win-unpacked/Weekdeck.exe
+      - name: Test Windows installer upgrade and duplicate prevention
+        if: matrix.platform == 'win'
+        shell: pwsh
+        run: ./scripts/test-installer.ps1 -Installer (Get-ChildItem release/Weekdeck-*-win-x64.exe | Select-Object -First 1).FullName
       - name: Launch packaged Mac app
         if: matrix.platform == 'mac'
         shell: bash
