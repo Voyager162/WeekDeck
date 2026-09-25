@@ -8,7 +8,7 @@ Open [Firebase Console](https://console.firebase.google.com/). Sign in with a Go
 
 ## 2. Create the project
 
-Choose the button to create a Firebase project. Name it **TimeBlocker** (or **TimeBlocker Dev** for a development environment). Firebase assigns a globally unique project ID; record that ID. Analytics and Gemini assistance are optional and not needed by this app.
+Choose the button to create a Firebase project. Name it **Weekdeck** (or **Weekdeck Dev** for a development environment). Firebase assigns a globally unique project ID; record that ID. Analytics and Gemini assistance are optional and not needed by this app.
 
 Start on the **Spark** plan. Email/password accounts and this small Firestore prototype can use Firebase's no-cost allowances without adding a payment method. Quotas still apply. Optional paid services, including deploying Cloud Functions, may require **Blaze** later. See [Firebase's plan documentation](https://firebase.google.com/docs/projects/billing/firebase-pricing-plans).
 
@@ -32,7 +32,7 @@ Use **Cloud Firestore**, not the separate product named Realtime Database. Fires
 
 ## 5. Register the shared client
 
-Return to Project overview and choose the **Web (`</>`)** app icon, or **Project settings > General > Your apps > Add app > Web**. Name it `TimeBlocker shared client`. Hosting is optional; skip it during registration.
+Return to Project overview and choose the **Web (`</>`)** app icon, or **Project settings > General > Your apps > Add app > Web**. Name it `Weekdeck shared client`. Hosting is optional; skip it during registration.
 
 Copy the displayed `firebaseConfig` object. This starter uses the Firebase JavaScript SDK inside the browser, mobile WebViews, and desktop renderer, so a web registration is intentional. Separate native Firebase registrations become necessary if we add native Firebase SDK features later.
 
@@ -73,7 +73,7 @@ Codex can perform project selection and deployment after your CLI sign-in. No `f
 
 ## 8. Verify cloud syncing
 
-Create an account inside TimeBlocker. Open the app in a second browser/device and sign in with that same account. Add a block in one session: it should appear in the other while both are online. Edit it, mark it complete, and delete it to check each path. The app shows **Synced** only after it has a server snapshot without pending writes.
+Create an account inside Weekdeck. Open the app in a second browser/device and sign in with that same account. Add a block in one session: it should appear in the other while both are online. Edit it, mark it complete, and delete it to check each path. The app shows **Synced** only after it has a server snapshot without pending writes.
 
 Use a different account as a final isolation check: its planner should be empty. In Firestore, documents appear under `users/{userId}/blocks/{blockId}`. There may be no parent user document; Firestore supports subcollections under such paths.
 

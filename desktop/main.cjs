@@ -15,7 +15,7 @@ function createWindow() {
     height: 820,
     minWidth: 380,
     minHeight: 600,
-    title: 'TimeBlocker',
+    title: 'Weekdeck',
     backgroundColor: '#f7f8fa',
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });

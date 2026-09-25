@@ -1,4 +1,4 @@
-# TimeBlocker
+# Weekdeck
 
 A shared React + TypeScript planner, packaged with Capacitor for iPhone/Android and Electron for macOS/Windows/Linux. Firebase Authentication supplies accounts; Cloud Firestore stores each account's schedule and streams changes to signed-in devices.
 

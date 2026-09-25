@@ -1,5 +1,5 @@
 {
-  "name": "timeblocker",
+  "name": "weekdeck",
   "version": "0.1.0",
   "private": true,
   "description": "A personal time-blocking planner for mobile and desktop.",
@@ -60,7 +60,7 @@
   },
   "build": {
     "appId": "com.voyager162.timeblocker",
-    "productName": "TimeBlocker",
+    "productName": "Weekdeck",
     "directories": {
       "output": "release"
     },

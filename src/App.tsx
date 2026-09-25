@@ -64,7 +64,7 @@ function Brand() {
         <LayoutGrid size={20} />
       </span>
       <span>
-        TimeBlocker<span className="brand-dot">.</span>
+        Weekdeck<span className="brand-dot">.</span>
       </span>
     </div>
   );
@@ -400,7 +400,7 @@ function Planner({ user }: { user: User | null }) {
           </div>
         </section>
         <div className="sidebar-bottom">
-          <span className="avatar">{user?.email?.[0].toUpperCase() ?? 'T'}</span>
+          <span className="avatar">{user?.email?.[0].toUpperCase() ?? 'W'}</span>
           <div>
             <strong>{user?.email?.split('@')[0] ?? 'Local preview'}</strong>
             <small>{user ? 'Personal workspace' : 'No account connected'}</small>
