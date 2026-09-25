@@ -141,6 +141,10 @@ test('email sharing accepts, syncs live, stays read-only, and revokes on desktop
     await a.getByLabel('Access', { exact: true }).selectOption('all');
     await a.getByRole('button', { name: 'Send invitation', exact: true }).click();
     await b.getByRole('button', { name: 'Cancel', exact: true }).click();
+    // Wait for the other device to observe the saved response before unloading the writer.
+    await expect(a.locator('.sharing-row').filter({ hasText: recipientEmail })).toContainText(
+      'declined',
+    );
     await b.reload();
     await expect(b.getByRole('region', { name: 'Weekly planner' })).toBeVisible();
     await expect(b.getByRole('dialog')).toHaveCount(0);
