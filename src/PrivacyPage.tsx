@@ -59,8 +59,11 @@ export function PrivacyPage({ onBack, onDelete }: { onBack: () => void; onDelete
         </p>
         <h2>Contact</h2>
         <p>
-          Public support contact information will be added before the mobile store launch. This
-          development release is not yet submitted to either mobile store.
+          Weekdeck is published by Voyager. For support and privacy requests, contact{' '}
+          <a href="mailto:weekdeckdev@gmail.com" target="_blank" rel="noreferrer">
+            weekdeckdev@gmail.com
+          </a>
+          .
         </p>
       </section>
     </main>

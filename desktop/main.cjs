@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol, net, session } = require('electron');
+const { app, BrowserWindow, protocol, net, session, shell } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
@@ -20,7 +20,10 @@ function createWindow() {
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });
   win.removeMenu();
-  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url === 'mailto:weekdeckdev@gmail.com') void shell.openExternal(url).catch(() => {});
+    return { action: 'deny' };
+  });
   win.webContents.on('will-navigate', (event) => event.preventDefault());
   win.loadURL('timeblocker://app/index.html');
 }

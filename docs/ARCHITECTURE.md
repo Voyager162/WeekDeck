@@ -55,4 +55,6 @@ The Electron renderer has Node integration disabled, context isolation and sandb
 
 ## Before a public launch
 
-Add account deletion/export, email verification, App Check appropriate to each platform, privacy/terms documents, monitoring and quota alerts, production/staging projects, signed native releases, app branding, and physical device tests. Current email/password auth avoids OAuth redirect complexity; native social sign-in requires a separate design and platform registration.
+Account deletion, privacy/support pages, and app branding are included. Deletion reauthenticates the password, writes an immutable `accountDeletions/{uid}` marker, deletes every week's blocks/templates/days plus `settings/planner`, and removes the Auth account. The marker prevents stale devices from recreating deleted records and contains only UID and deletion time; this retention is disclosed. Interrupted cleanup can resume. Account/privacy navigation preserves pending native reminders; sign-out, account changes, and deletion clear them.
+
+Before a broad launch, add data export, email verification, App Check appropriate to each platform, reviewed privacy/terms documents, monitoring and quota alerts, production/staging projects, production-signed native releases, and physical device tests. Current email/password auth avoids OAuth redirect complexity; native social sign-in requires a separate design and platform registration.

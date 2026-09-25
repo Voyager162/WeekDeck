@@ -20,7 +20,7 @@ In **Build > Authentication**, choose **Get started**, then **Sign-in method**. 
 
 Under Authentication's settings, add `localhost` and `127.0.0.1` to **Authorized domains** for browser development if they are missing. Later add the real web hostname. The initial app uses passwords, not Google OAuth or native social-login redirects.
 
-The starter supports registration, sign-in, password reset, and sign-out. It does not yet require email verification. Before a public launch we should add verification, account deletion, and appropriate abuse controls. [Password authentication documentation](https://firebase.google.com/docs/auth/web/password-auth).
+The app supports registration, sign-in, password reset, sign-out, and password-confirmed account deletion. It does not yet require email verification. Before a broad public launch, add verification and appropriate abuse controls. [Password authentication documentation](https://firebase.google.com/docs/auth/web/password-auth).
 
 ## 4. Create the database
 

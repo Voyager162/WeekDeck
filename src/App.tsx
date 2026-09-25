@@ -12,6 +12,7 @@ import { Brand } from './planner/ui';
 import { WeekPlanner } from './planner/WeekPlanner';
 import { AccountPage } from './AccountPage';
 import { PrivacyPage } from './PrivacyPage';
+import { SupportPage } from './SupportPage';
 import { clearNativeReminders } from './planner/notifications';
 
 export default function App() {
@@ -23,7 +24,9 @@ export default function App() {
       ? 'privacy'
       : location.pathname === '/delete-account'
         ? 'account'
-        : 'planner',
+        : location.pathname === '/support'
+          ? 'support'
+          : 'planner',
   );
   const [deleting, setDeleting] = useState(false);
   useEffect(() => {
@@ -64,6 +67,14 @@ export default function App() {
         <p role="alert">{configurationError || error}</p>
       </main>
     );
+  if (page === 'support')
+    return (
+      <SupportPage
+        onBack={() => setPage('planner')}
+        onPrivacy={() => setPage('privacy')}
+        onDelete={() => setPage('account')}
+      />
+    );
   if (loading)
     return (
       <main className="auth-shell">
@@ -72,7 +83,13 @@ export default function App() {
       </main>
     );
   if (firebase && !user)
-    return <Auth onPrivacy={() => setPage('privacy')} deleting={page === 'account'} />;
+    return (
+      <Auth
+        onPrivacy={() => setPage('privacy')}
+        onSupport={() => setPage('support')}
+        deleting={page === 'account'}
+      />
+    );
   if (user && (page === 'account' || deleting))
     return (
       <AccountPage
@@ -81,6 +98,7 @@ export default function App() {
         locked={deleting}
         onBack={() => setPage('planner')}
         onPrivacy={() => setPage('privacy')}
+        onSupport={() => setPage('support')}
       />
     );
   return (
@@ -92,7 +110,15 @@ export default function App() {
     />
   );
 }
-function Auth({ onPrivacy, deleting }: { onPrivacy: () => void; deleting: boolean }) {
+function Auth({
+  onPrivacy,
+  onSupport,
+  deleting,
+}: {
+  onPrivacy: () => void;
+  onSupport: () => void;
+  deleting: boolean;
+}) {
   const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin');
   const [email, setEmail] = useState(''),
     [password, setPassword] = useState('');
@@ -207,9 +233,14 @@ function Auth({ onPrivacy, deleting }: { onPrivacy: () => void; deleting: boolea
             </button>
           )}
         </div>
-        <button className="text-button auth-privacy" onClick={onPrivacy}>
-          Privacy
-        </button>
+        <div className="account-links auth-privacy">
+          <button className="text-button" onClick={onPrivacy}>
+            Privacy
+          </button>
+          <button className="text-button" onClick={onSupport}>
+            Support
+          </button>
+        </div>
       </section>
     </main>
   );

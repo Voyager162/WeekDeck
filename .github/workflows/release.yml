@@ -169,4 +169,14 @@ jobs:
           cd downloads
           sha256sum Weekdeck-* > SHA256SUMS.txt
           cd ..
-          gh release create "v${VERSION}" downloads/* --draft --prerelease --target "$GITHUB_SHA" --title "Weekdeck ${VERSION}" --notes-file distribution/RELEASE_NOTES.md
+          TAG="v${VERSION}"
+          DRAFT=$(gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null || true)
+          if [ "$DRAFT" = "true" ]; then
+            gh release edit "$TAG" --draft --prerelease --target "$GITHUB_SHA" --title "Weekdeck ${VERSION}" --notes-file distribution/RELEASE_NOTES.md
+            gh release upload "$TAG" downloads/* --clobber
+          elif [ "$DRAFT" = "false" ]; then
+            echo "Refusing to overwrite a published release. Increment the version."
+            exit 1
+          else
+            gh release create "$TAG" downloads/* --draft --prerelease --target "$GITHUB_SHA" --title "Weekdeck ${VERSION}" --notes-file distribution/RELEASE_NOTES.md
+          fi

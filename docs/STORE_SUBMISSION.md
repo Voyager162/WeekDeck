@@ -1,13 +1,13 @@
 # Publish Weekdeck, step by step
 
-Prepared September 25, 2026. Publisher display name: **Voyager**. Store accounts, legal identity, support email, signing keys, physical-device validation, and store approval are still required. The GitHub beta is not a store submission.
+Prepared September 25, 2026. Publisher display name: **Voyager**. Public support/privacy email: **weekdeckdev@gmail.com**. Store accounts, verified legal identity, signing keys, physical-device validation, and store approval are still required. The GitHub beta is not a store submission.
 
 ## 1. Supply the public details
 
-1. Choose a public support/privacy email and make sure you can receive mail there. Do not use a placeholder. Add it to the app's Privacy page and store contact fields.
+1. Make sure you can receive mail at **weekdeckdev@gmail.com**. It is already included in the app's Privacy and Support pages. Use the same address in store contact fields.
 2. Decide whether you are publishing as an individual or a legally registered organization. Use real legal details during verification. Apple's individual seller name is your legal name, not automatically "Voyager"; organizations have additional verification requirements. [Apple enrollment](https://developer.apple.com/programs/enroll/).
 3. Review the privacy disclosure against your actual business practices and Firebase settings. Obtain qualified advice for legal obligations that apply to your audience. The supplied disclosure/manifest is a technical starting point, not a legal compliance guarantee.
-4. Use these public URLs once the latest web deployment is verified: app/support access `https://weekdeck-67e4b.web.app`, privacy `https://weekdeck-67e4b.web.app/privacy`, account deletion `https://weekdeck-67e4b.web.app/delete-account`.
+4. Use these public URLs: app `https://weekdeck-67e4b.web.app`, support `https://weekdeck-67e4b.web.app/support`, privacy `https://weekdeck-67e4b.web.app/privacy`, account deletion `https://weekdeck-67e4b.web.app/delete-account`.
 5. Reserve **Weekdeck** in the store if available. Keep the production identifier **com.voyager162.timeblocker** stable once registered. The Android preview's `.beta` suffix is deliberately not the production identifier.
 
 ## 2. Google Play

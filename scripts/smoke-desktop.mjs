@@ -15,6 +15,14 @@ try {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.getByRole('heading', { name: 'Welcome back' }).waitFor();
+  await page.getByRole('button', { name: 'Support', exact: true }).click();
+  await page.getByRole('heading', { name: 'Support', exact: true }).waitFor();
+  if (
+    (await page.getByRole('link', { name: 'Email support' }).getAttribute('href')) !==
+    'mailto:weekdeckdev@gmail.com'
+  )
+    throw new Error('Missing support contact');
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Privacy', exact: true }).click();
   await page.getByRole('heading', { name: 'Privacy', exact: true }).waitFor();
   await page.getByRole('button', { name: 'Delete your account' }).click();

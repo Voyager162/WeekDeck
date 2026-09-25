@@ -369,6 +369,27 @@ test('preset editing, tap placement and all settings fit a narrow phone', async 
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
+test('public support and privacy pages fit narrow and desktop screens', async ({ page }) => {
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/support');
+    await expect(page.getByRole('heading', { name: 'Support', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Email support' })).toHaveAttribute(
+      'href',
+      'mailto:weekdeckdev@gmail.com',
+    );
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await page.getByRole('button', { name: 'Privacy', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Privacy', exact: true })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'weekdeckdev@gmail.com' })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  }
+});
+
 for (const width of [1440, 390])
   test(`visual board ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });

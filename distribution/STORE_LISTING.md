@@ -10,6 +10,14 @@ Google short description: Plan your week with flexible time blocks and sync acro
 
 Category: Productivity
 
+Support email: weekdeckdev@gmail.com
+
+Support URL: https://weekdeck-67e4b.web.app/support
+
+Privacy URL: https://weekdeck-67e4b.web.app/privacy
+
+Account deletion URL: https://weekdeck-67e4b.web.app/delete-account
+
 ## Description
 
 Make space for work, study, practice, and downtime with Weekdeck.
@@ -20,7 +28,6 @@ Sign in to keep your planner in sync across devices. On iPhone and Android, enab
 
 ## Required owner inputs
 
-- Public support/privacy email: not supplied yet.
 - Verified legal seller identity, distribution countries, pricing, target audience, age/content rating answers.
 - Real iPhone/iPad/Android screenshots, feature graphic, and physical-device test results.
 - Dedicated store reviewer login, supplied privately to each store.

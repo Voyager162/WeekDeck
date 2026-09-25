@@ -10,11 +10,13 @@ export function AccountPage({
   locked,
   onBack,
   onPrivacy,
+  onSupport,
 }: {
   user: User;
   locked: boolean;
   onBack: () => void;
   onPrivacy: () => void;
+  onSupport: () => void;
 }) {
   const [confirm, setConfirm] = useState(locked);
   const [password, setPassword] = useState('');
@@ -35,9 +37,14 @@ export function AccountPage({
       <section>
         <h1>{deleting ? 'Finish deleting your account' : 'Account'}</h1>
         <p className="account-email">{user.email}</p>
-        <button className="text-button" disabled={busy} onClick={onPrivacy}>
-          Privacy
-        </button>
+        <div className="account-links">
+          <button className="text-button" disabled={busy} onClick={onPrivacy}>
+            Privacy
+          </button>
+          <button className="text-button" disabled={busy} onClick={onSupport}>
+            Support
+          </button>
+        </div>
         <div className="account-danger">
           <h2>Delete account</h2>
           <p>
