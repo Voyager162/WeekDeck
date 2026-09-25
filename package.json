@@ -1,9 +1,10 @@
 {
   "name": "weekdeck",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "private": true,
   "description": "A personal time-blocking planner for mobile and desktop.",
-  "author": "Weston Gardner",
+  "author": "Voyager",
+  "homepage": "https://weekdeck-67e4b.web.app",
   "type": "module",
   "main": "desktop/main.cjs",
   "engines": {
@@ -12,6 +13,9 @@
   "scripts": {
     "format": "prettier --write .",
     "dev": "vite --host 127.0.0.1",
+    "assets": "node scripts/generate-assets.mjs",
+    "postassets": "node scripts/generate-notices.mjs",
+    "release:check": "node scripts/check-release-config.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
@@ -59,6 +63,7 @@
     "electron-builder": "26.15.3",
     "firebase-tools": "15.31.0",
     "prettier": "3.9.9",
+    "sharp": "0.35.4",
     "typescript": "7.0.2",
     "vite": "8.3.1",
     "vitest": "5.0.1"
@@ -66,31 +71,36 @@
   "build": {
     "appId": "com.voyager162.timeblocker",
     "productName": "Weekdeck",
+    "artifactName": "Weekdeck-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
       "desktop/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules{,/**/*}"
     ],
     "asar": true,
     "mac": {
       "target": [
         "dmg"
       ],
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png"
     },
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "linux": {
       "target": [
         "AppImage"
       ],
-      "category": "Office"
+      "category": "Office",
+      "icon": "build/icons"
     }
   }
 }

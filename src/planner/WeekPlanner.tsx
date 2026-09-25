@@ -25,6 +25,7 @@ import {
   Settings2,
   Undo2,
   X,
+  UserRound,
 } from 'lucide-react';
 import { signOut, type User } from 'firebase/auth';
 import { firebase } from '../firebase';
@@ -59,7 +60,15 @@ type Dialog =
   | { kind: 'remove'; day: string }
   | { kind: 'settings'; tab?: string }
   | null;
-export function WeekPlanner({ user }: { user: User | null }) {
+export function WeekPlanner({
+  user,
+  onAccount,
+  onPrivacy,
+}: {
+  user: User | null;
+  onAccount: () => void;
+  onPrivacy: () => void;
+}) {
   const today = dateKey(new Date());
   const [anchor, setAnchor] = useState(today),
     [weekStart, setWeekStart] = useState<0 | 1>(1);
@@ -364,6 +373,11 @@ export function WeekPlanner({ user }: { user: User | null }) {
             <IconButton label="Settings" onClick={() => setDialog({ kind: 'settings' })}>
               <Settings2 size={18} />
             </IconButton>
+            {user && (
+              <IconButton label="Account" onClick={onAccount}>
+                <UserRound size={18} />
+              </IconButton>
+            )}
             {user && (
               <IconButton
                 label={`Sign out ${user.email}`}
@@ -722,6 +736,8 @@ export function WeekPlanner({ user }: { user: User | null }) {
           preferences={data.preferences}
           initialTab={dialog.tab}
           notifications={notifications}
+          onAccount={user ? onAccount : undefined}
+          onPrivacy={onPrivacy}
           onSave={(preferences) => commit(settingsChanges(data, preferences))}
           onClose={() => setDialog(null)}
         />

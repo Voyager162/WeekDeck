@@ -95,3 +95,65 @@ test('two devices sync a schedule while a different account stays isolated', asy
     await third.close();
   }
 });
+
+test('account deletion requires the password and removes all weeks across devices', async ({
+  browser,
+  request,
+}) => {
+  const first = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const second = await browser.newContext();
+  try {
+    const a = await first.newPage(),
+      b = await second.newPage();
+    const email = `delete-${Date.now()}@example.test`;
+    await login(a, email, true);
+    await login(b, email);
+    const authUrl =
+      'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/projects/demo-timeblocker/accounts';
+    const admin = { headers: { Authorization: 'Bearer owner' } };
+    const accounts = await request.get(authUrl, admin);
+    expect(accounts.ok()).toBe(true);
+    const uid = (await accounts.json()).users.find(
+      (user: { email: string }) => user.email === email,
+    ).localId;
+    await a.getByRole('button', { name: 'New block', exact: true }).click();
+    await a.getByLabel('Block name').fill('Deletion test');
+    await a.getByRole('button', { name: 'Save block', exact: true }).click();
+    await b.getByRole('button', { name: 'Next week', exact: true }).click();
+    await b.getByRole('button', { name: 'New block', exact: true }).click();
+    await b.getByLabel('Block name').fill('Another week');
+    await b.getByRole('button', { name: 'Save block', exact: true }).click();
+    expect(await a.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await a.getByRole('button', { name: 'Account', exact: true }).click();
+    await a.getByRole('button', { name: 'Delete account', exact: true }).click();
+    await a.getByLabel('Confirm your password').fill('Wrong-password');
+    await a.getByRole('button', { name: 'Permanently delete account' }).click();
+    await expect(a.getByRole('alert')).toHaveText('The password is incorrect.');
+    await a.getByLabel('Confirm your password').fill('Test-password-482!');
+    await a.getByRole('button', { name: 'Permanently delete account' }).click();
+    await expect(a.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
+    await expect(b.getByRole('heading', { name: 'Finish deleting your account' })).toBeVisible();
+    await expect(b.locator('.scheduled-block')).toHaveCount(0);
+    for (const collection of ['blocks', 'templates', 'days', 'settings']) {
+      const response = await request.get(
+        `http://127.0.0.1:8080/v1/projects/demo-timeblocker/databases/(default)/documents/users/${uid}/${collection}`,
+        admin,
+      );
+      expect(response.ok()).toBe(true);
+      expect((await response.json()).documents ?? []).toHaveLength(0);
+    }
+    const remainingAccounts = await request.get(authUrl, admin);
+    expect(
+      (await remainingAccounts.json()).users.some(
+        (user: { localId: string }) => user.localId === uid,
+      ),
+    ).toBe(false);
+    await a.getByLabel('Email', { exact: true }).fill(email);
+    await a.getByLabel('Password', { exact: true }).fill('Test-password-482!');
+    await a.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(a.getByRole('alert')).toContainText('email or password');
+  } finally {
+    await first.close();
+    await second.close();
+  }
+});

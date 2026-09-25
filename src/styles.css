@@ -1031,6 +1031,57 @@ h3,
   clip-path: inset(50%);
   white-space: nowrap;
 }
+.account-page {
+  min-height: 100dvh;
+  padding: 24px;
+  background: var(--surface);
+}
+.account-page > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 680px;
+  margin: 0 auto 48px;
+}
+.account-page > section {
+  max-width: 680px;
+  margin: auto;
+}
+.account-page h1 {
+  font-size: 26px;
+}
+.account-page h2 {
+  font-size: 18px;
+  margin-top: 30px;
+}
+.account-page p {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.account-page .account-email {
+  color: var(--text);
+}
+.account-danger {
+  border-block: 1px solid var(--border);
+  padding: 0 0 28px;
+  margin: 24px 0;
+}
+.account-danger form {
+  max-width: 420px;
+  margin-top: 24px;
+}
+.account-actions,
+.account-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 18px 0;
+}
+.auth-privacy {
+  margin-top: 24px;
+}
 .now-line {
   position: absolute;
   height: 1px;

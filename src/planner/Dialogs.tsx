@@ -446,7 +446,7 @@ export function CopyDialog({
         </div>
         <Toggle
           label="Replace existing blocks"
-          detail="Selected days will use this schedule and planning hours."
+          detail="Existing blocks on the selected days will be removed."
           checked={replace}
           onChange={setReplace}
         />
@@ -475,12 +475,16 @@ export function Settings({
   notifications,
   onSave,
   onClose,
+  onAccount,
+  onPrivacy,
 }: {
   preferences: Preferences;
   initialTab?: string;
   notifications: ReturnType<typeof useNotifications>;
   onSave: (preferences: Preferences) => Promise<void>;
   onClose: () => void;
+  onAccount?: () => void;
+  onPrivacy: () => void;
 }) {
   const [tab, setTab] = useState(initialTab ?? 'appearance');
   const [draft, setDraft] = useState(() => structuredClone(preferences));
@@ -592,6 +596,16 @@ export function Settings({
           {tab === 'planner' && (
             <>
               <h3>Planning preferences</h3>
+              <div className="account-links">
+                {onAccount && (
+                  <button type="button" className="text-button" onClick={onAccount}>
+                    Account
+                  </button>
+                )}
+                <button type="button" className="text-button" onClick={onPrivacy}>
+                  Privacy
+                </button>
+              </div>
               <Toggle
                 label="Shared day hours"
                 checked={hours.linked}

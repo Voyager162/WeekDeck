@@ -9,6 +9,19 @@ service cloud.firestore {
     function owner(uid) {
       return request.auth != null && request.auth.uid == uid;
     }
+    function activeOwner(uid) {
+      return owner(uid) && !exists(/databases/$(database)/documents/accountDeletions/$(uid));
+    }
+    match /accountDeletions/{uid} {
+      allow get: if owner(uid);
+      allow create: if owner(uid)
+        && request.auth.token.auth_time is int
+        && request.auth.token.auth_time * 1000 <= request.time.toMillis()
+        && request.time.toMillis() - request.auth.token.auth_time * 1000 < 300000
+        && request.resource.data.keys().hasOnly(['requestedAt'])
+        && request.resource.data.requestedAt == request.time;
+      allow list, update, delete: if false;
+    }
     function fields(data, names) {
       return data.keys().hasAll(names) && data.keys().hasOnly(names);
     }
@@ -30,9 +43,9 @@ service cloud.firestore {
     }
     match /users/{uid}/blocks/{blockId} {
       allow read, delete: if owner(uid);
-      allow create: if owner(uid) && validBlock(request.resource.data)
+      allow create: if activeOwner(uid) && validBlock(request.resource.data)
         && request.resource.data.createdAt == request.time;
-      allow update: if owner(uid) && validBlock(request.resource.data)
+      allow update: if activeOwner(uid) && validBlock(request.resource.data)
         && request.resource.data.createdAt == resource.data.createdAt;
     }
     // Reusable presets contain no ownership or privilege fields.
@@ -46,7 +59,7 @@ service cloud.firestore {
     }
     match /users/{uid}/templates/{id} {
       allow read, delete: if owner(uid);
-      allow create, update: if owner(uid) && validTemplate(request.resource.data);
+      allow create, update: if activeOwner(uid) && validTemplate(request.resource.data);
     }
     // Per-date planning hours use local wall-clock minutes; blocks store instants.
     function hoursVersion(value) {
@@ -63,7 +76,7 @@ service cloud.firestore {
     }
     match /users/{uid}/days/{day} {
       allow read, delete: if owner(uid);
-      allow create, update: if owner(uid) && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+      allow create, update: if activeOwner(uid) && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
         && validDay(request.resource.data);
     }
     function validNotifications(data) {
@@ -95,7 +108,7 @@ service cloud.firestore {
     }
     match /users/{uid}/settings/planner {
       allow read: if owner(uid);
-      allow create, update: if owner(uid) && validSettings(request.resource.data);
+      allow create, update: if activeOwner(uid) && validSettings(request.resource.data);
       allow delete: if owner(uid);
     }
     // All other paths are private until an explicit schema and rule are added.

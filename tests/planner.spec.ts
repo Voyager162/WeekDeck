@@ -111,6 +111,25 @@ test('rejects overlapping edits and copies; replacement and undo are atomic', as
   await page.getByRole('button', { name: 'Save block' }).click();
   await expect(page.getByRole('alert')).toContainText('free time');
 });
+test('copy button copies both day boundaries and persists them after reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page);
+  await page.getByRole('button', { name: 'Monday settings', exact: true }).click();
+  await page.getByLabel('Start', { exact: true }).fill('10:00');
+  await page.getByLabel('End', { exact: true }).fill('18:00');
+  await page.getByRole('button', { name: 'Save hours' }).click();
+  await page.getByRole('button', { name: 'Copy Monday', exact: true }).click();
+  await page.getByRole('checkbox', { name: /Tuesday/ }).check();
+  await page.getByRole('checkbox', { name: /Wednesday/ }).check();
+  await page.getByRole('button', { name: 'Copy to 2 days' }).click();
+  await page.reload();
+  for (const day of ['Tuesday', 'Wednesday']) {
+    await page.getByRole('button', { name: `${day} settings`, exact: true }).click();
+    await expect(page.getByLabel('Start', { exact: true })).toHaveValue('10:00');
+    await expect(page.getByLabel('End', { exact: true })).toHaveValue('18:00');
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  }
+});
 async function add(page: Page, title: string, day = dates[0], start = '09:00', end = '10:00') {
   await page.getByRole('button', { name: 'New block', exact: true }).click();
   await page.getByLabel('Block name').fill(title);

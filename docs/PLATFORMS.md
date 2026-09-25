@@ -34,11 +34,11 @@ npm run desktop
 npm run desktop:pack
 ```
 
-`desktop:pack` produces an unpacked app under `release/`. `npm run desktop:dist` produces the current platform's configured installer: Windows NSIS, macOS DMG, or Linux AppImage. Build and test on the target OS; macOS signing/notarization requires macOS and Apple credentials. The initial installers are unsigned development artifacts. Code signing, updater infrastructure, final app icons, and store distribution are not configured.
+Run `npm run assets` before packaging to generate the app icons and third-party notices. `desktop:pack` produces an unpacked app under `release/`. `npm run desktop:dist` produces the current platform's configured installer: Windows NSIS, macOS DMG, or Linux AppImage. Build and test on the target OS; production macOS signing/notarization requires macOS and Apple credentials. Beta installers are unsigned on Windows and ad-hoc signed (not notarized) on macOS. There is no automatic updater. See [installation](../distribution/INSTALL.md) and [store submission](STORE_SUBMISSION.md).
 
 ## Validation boundary
 
-The shared app has browser tests at desktop and phone sizes, and Firebase emulator tests. These are not substitutes for building and testing each native target. Creating the native project directories does not mean iOS/Android binaries have been built. CI currently validates the shared app and backend rules on Linux; native release jobs should be added when SDKs and signing are available.
+The shared app has browser tests at desktop and phone sizes, and Firebase emulator tests. The manually dispatched **Release Beta** workflow builds Windows, macOS (Apple silicon and Intel), Linux, Android, and an unsigned iOS archive on native runners. It smoke-tests packaged desktop startup/navigation and runs the shared app/security/sync suite before creating a draft release. Check the actual workflow outcome for a given release; the existence of a workflow is not evidence it passed. The unsigned iOS archive and Android AAB are developer preparation artifacts, not installable iPhone or store-upload-ready packages. These checks do not replace physical-device validation.
 
 The weekly board is exercised in Chromium and WebKit at 320, 390, 768 and 1440px widths. A Chromium mobile-emulation test dispatches actual touch gestures to verify long-press drawer dragging and ghost placement. WebKit runs the mouse/form/layout suite; this is not an iPhone-device test. Native local-notification delivery still requires the device checklist in [NOTIFICATIONS.md](NOTIFICATIONS.md).
 

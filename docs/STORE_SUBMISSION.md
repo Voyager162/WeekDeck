@@ -1,0 +1,51 @@
+# Publish Weekdeck, step by step
+
+Prepared September 25, 2026. Publisher display name: **Voyager**. Store accounts, legal identity, support email, signing keys, physical-device validation, and store approval are still required. The GitHub beta is not a store submission.
+
+## 1. Supply the public details
+
+1. Choose a public support/privacy email and make sure you can receive mail there. Do not use a placeholder. Add it to the app's Privacy page and store contact fields.
+2. Decide whether you are publishing as an individual or a legally registered organization. Use real legal details during verification. Apple's individual seller name is your legal name, not automatically "Voyager"; organizations have additional verification requirements. [Apple enrollment](https://developer.apple.com/programs/enroll/).
+3. Review the privacy disclosure against your actual business practices and Firebase settings. Obtain qualified advice for legal obligations that apply to your audience. The supplied disclosure/manifest is a technical starting point, not a legal compliance guarantee.
+4. Use these public URLs once the latest web deployment is verified: app/support access `https://weekdeck-67e4b.web.app`, privacy `https://weekdeck-67e4b.web.app/privacy`, account deletion `https://weekdeck-67e4b.web.app/delete-account`.
+5. Reserve **Weekdeck** in the store if available. Keep the production identifier **com.voyager162.timeblocker** stable once registered. The Android preview's `.beta` suffix is deliberately not the production identifier.
+
+## 2. Google Play
+
+1. Open [Play Console registration](https://play.google.com/console/signup). Choose the correct account type, pay the **US$25 one-time registration fee**, and finish identity/contact verification. New personal accounts also require verification using a real Android device. [Official enrollment instructions](https://support.google.com/googleplay/android-developer/answer/6112435?hl=en).
+2. Create an app: Weekdeck, App (not Game), Productivity. Choose your actual language, pricing, countries, and audience. Do not mark it as child-directed or complete age/content declarations without deciding the actual audience and reviewing applicable obligations.
+3. Install Android Studio. Open this repository, run `npm ci`, configure `.env.local` with the existing Firebase web client values, then run `npm run release:check`, `node scripts/generate-assets.mjs android`, `npm run assets`, `npm run build`, `npx cap sync android`, and `npm run android`.
+4. In Android Studio, select **Build > Generate Signed App Bundle or APK > Android App Bundle**. Create an upload keystore outside the repository. Keep the keystore, alias, and passwords in secure backed-up storage. Never send them in chat or commit them. Select the `release` variant, not `debug`.
+5. For command-line signing, the Gradle project accepts `WEEKDECK_ANDROID_KEYSTORE` (absolute path), `WEEKDECK_ANDROID_STORE_PASSWORD`, `WEEKDECK_ANDROID_KEY_ALIAS`, and `WEEKDECK_ANDROID_KEY_PASSWORD`. Supply all four securely, then run `android/gradlew bundleRelease` from the appropriate Android working directory. The CI AAB without these values is unsigned and cannot be uploaded as-is.
+6. Upload the signed `.aab` under **Testing > Internal testing**, and use Play App Signing. Target API is already **36**. Google requires API 36 or newer for new phone apps/updates from August 31, 2026; recheck on submission day. [Target API policy](https://support.google.com/googleplay/android-developer/answer/11926878?hl=en).
+7. Complete Main store listing using `distribution/STORE_LISTING.md`. Upload the 512x512 icon and a truthful 1024x500 feature graphic, plus real device screenshots. Do not present browser mockups as native-device verification. See [listing asset requirements](https://support.google.com/googleplay/android-developer/answer/9866151?hl=en).
+8. Complete **App content**: privacy policy URL, Ads (none in this app), App access, target audience, content rating, Data safety, and any permissions declarations shown by Console. Provide a dedicated review login in the private App access field because the planner requires sign-in. Keep those credentials out of this repository.
+9. Data safety must disclose account email, user/account identifiers, and schedule/notes content used for account/app functionality and sync. Review Firebase's service processing and the actual SDKs before selecting sharing/retention answers. Data is encrypted in transit. Account deletion is available in-app and through the web URL, and retains a minimal anti-recreation security record; reflect that accurately. [Google deletion policy](https://support.google.com/googleplay/android-developer/answer/13327111?hl=en).
+10. For a new personal account, run a **closed test with at least 12 continuously opted-in testers for at least 14 days**, fix reported issues, then apply for production access. Internal testing alone does not meet this requirement. [Official testing requirement](https://support.google.com/googleplay/android-developer/answer/14151465?hl=en).
+11. After production access is granted and the checklist below passes, create a production release, choose rollout countries, and send it for review. Increase `versionCode` for each uploaded build; use a consistent user-facing version.
+
+## 3. Apple App Store
+
+1. Enroll at [Apple Developer](https://developer.apple.com/programs/enroll/), complete identity verification, accept agreements, and pay **US$99 per membership year** (or local equivalent). Enable two-factor authentication. Select the truthful individual/organization identity.
+2. Use a Mac with **Xcode 26 or newer and the iOS 26 SDK or newer**. This has been required for App Store uploads since April 28, 2026. [Apple upload requirements](https://developer.apple.com/news/upcoming-requirements/).
+3. Add your Apple account in Xcode Settings > Accounts. In Certificates, Identifiers & Profiles, register an explicit App ID matching `com.voyager162.timeblocker`. In [App Store Connect](https://appstoreconnect.apple.com), create the Weekdeck iOS app with that bundle ID and a unique private SKU, such as `weekdeck-ios`.
+4. On the Mac, run `npm ci`, configure `.env.local`, then `npm run release:check`, `node scripts/generate-assets.mjs ios`, `npm run assets`, `npm run build`, `npx cap sync ios`, and `npm run ios`. Select the **App** target, choose your team, and enable automatic signing. Confirm display name Weekdeck, version `0.1.0`, and build number `1` (increase for subsequent uploads).
+5. Add `distribution/ios/PrivacyInfo.xcprivacy` to the App target through Xcode's Add Files dialog and confirm it appears in **Copy Bundle Resources**. The unsigned CI archive includes a copy for inspection, but the source Xcode project intentionally needs this target-membership step on your signing Mac. Generate Xcode's privacy report and review app/SDK declarations. Update reasons if native APIs/plugins change. [Apple privacy manifests](https://developer.apple.com/documentation/bundleresources/privacy_manifest_files).
+6. Test on a real iPhone. Select **Any iOS Device (arm64)**, then **Product > Archive**. In Organizer, use **Validate App**, then **Distribute App > App Store Connect > Upload**. Signing/provisioning belongs to your team. The unsigned CI archive is a compile-check artifact, not an installable IPA.
+7. In App Store Connect, finish App Information, Pricing and Availability, age rating, screenshots, privacy/support URLs, and App Privacy. Disclose account-linked email, user ID, and planner content used for app functionality. No ads or tracking SDKs are included. Complete encryption/export questions truthfully for standard HTTPS/TLS use; do not claim an exemption without reviewing Apple's questions.
+8. Provide a dedicated review account in the private **App Review Information** field and explain how to test the planner and delete that account. Creating accounts requires in-app deletion; Weekdeck now includes password-confirmed deletion. [Apple account deletion requirement](https://developer.apple.com/support/offering-account-deletion-in-your-app).
+9. Start with **TestFlight**, invite testers, and complete external beta review if requested. Capture real screenshots for every supported device class; the project currently supports iPhone and iPad, so include the required iPad assets too. [Screenshot sizes](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/).
+10. After testing, select the uploaded build for the App Store version and submit for review. Choose manual release if you want control over the launch date. Store review can require further changes; compilation does not guarantee approval.
+
+## 4. Required device checks
+
+- Fresh install, upgrade, sign-in, password reset, sign-out, and account switching.
+- Sync phone and desktop; copy 10 AM-6 PM onto a 9 AM-5 PM day with both empty and occupied targets. Verify exact hours, conflicts, refresh, keyboard copy, and undo.
+- Touch dragging, gap fitting, top/bottom resizing, day removal/restoration, all themes, large text, small screens, rotation, keyboard navigation, and screen readers.
+- Notifications with permission denied/allowed, locked screen, restart, background/foreground, timezone/DST, advanced weekly intervals, adjacent blocks, queue limits, and remote edits. Follow `docs/NOTIFICATIONS.md`.
+- Account deletion removes every week's blocks/presets/settings; wrong password cannot delete; another signed-in device cannot restore deleted data; interrupted deletion can resume.
+- Review the exact signed artifacts, privacy declarations, permission lists, reviewer access, and public support email. Confirm App Check/abuse controls and quota monitoring appropriate to a public launch; those are not made production-ready by CI.
+
+## 5. Desktop production signing later
+
+The beta installers are unsigned Windows and ad-hoc signed/unnotarized macOS builds. For a polished production release, arrange Windows publisher signing and Apple Developer ID signing/notarization, keep credentials in protected CI secrets, enable macOS hardened runtime with the required Electron entitlements, and test installed apps. No updater or signing service has been purchased or provisioned. Do not disable OS security globally to distribute a beta.

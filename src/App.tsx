@@ -6,14 +6,25 @@ import {
   signInWithEmailAndPassword,
   type User,
 } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { firebase, configurationError } from './firebase';
 import { Brand } from './planner/ui';
 import { WeekPlanner } from './planner/WeekPlanner';
+import { AccountPage } from './AccountPage';
+import { PrivacyPage } from './PrivacyPage';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(!!firebase);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(
+    location.pathname === '/privacy'
+      ? 'privacy'
+      : location.pathname === '/delete-account'
+        ? 'account'
+        : 'planner',
+  );
+  const [deleting, setDeleting] = useState(false);
   useEffect(() => {
     if (!firebase) return;
     return onAuthStateChanged(
@@ -28,6 +39,17 @@ export default function App() {
       },
     );
   }, []);
+  useEffect(() => {
+    setDeleting(false);
+    if (!firebase || !user) return;
+    return onSnapshot(
+      doc(firebase.db, 'accountDeletions', user.uid),
+      (snapshot) => setDeleting(snapshot.exists()),
+      () => setError('Account status could not be checked. Please reconnect and reload.'),
+    );
+  }, [user]);
+  if (page === 'privacy')
+    return <PrivacyPage onBack={() => setPage('planner')} onDelete={() => setPage('account')} />;
   if (configurationError || error)
     return (
       <main className="auth-shell">
@@ -42,10 +64,28 @@ export default function App() {
         <p role="status">Opening your planner...</p>
       </main>
     );
-  if (firebase && !user) return <Auth />;
-  return <WeekPlanner key={user?.uid ?? 'preview'} user={user} />;
+  if (firebase && !user)
+    return <Auth onPrivacy={() => setPage('privacy')} deleting={page === 'account'} />;
+  if (user && (page === 'account' || deleting))
+    return (
+      <AccountPage
+        key={user.uid}
+        user={user}
+        locked={deleting}
+        onBack={() => setPage('planner')}
+        onPrivacy={() => setPage('privacy')}
+      />
+    );
+  return (
+    <WeekPlanner
+      key={user?.uid ?? 'preview'}
+      user={user}
+      onAccount={() => setPage('account')}
+      onPrivacy={() => setPage('privacy')}
+    />
+  );
 }
-function Auth() {
+function Auth({ onPrivacy, deleting }: { onPrivacy: () => void; deleting: boolean }) {
   const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>('signin');
   const [email, setEmail] = useState(''),
     [password, setPassword] = useState('');
@@ -69,7 +109,9 @@ function Auth() {
     } catch (error) {
       const code = (error as { code?: string }).code;
       setError(
-        code === 'auth/invalid-credential'
+        code === 'auth/invalid-credential' ||
+          code === 'auth/user-not-found' ||
+          code === 'auth/wrong-password'
           ? 'The email or password is incorrect.'
           : code === 'auth/email-already-in-use'
             ? 'An account already exists with this email.'
@@ -99,7 +141,11 @@ function Auth() {
               ? 'Reset your password'
               : 'Welcome back'}
         </h1>
-        <p className="auth-subtitle">A little space for everything that matters.</p>
+        <p className="auth-subtitle">
+          {deleting
+            ? 'Sign in to delete your Weekdeck account and planner data.'
+            : 'A little space for everything that matters.'}
+        </p>
         <form onSubmit={submit}>
           <label>
             Email
@@ -154,6 +200,9 @@ function Auth() {
             </button>
           )}
         </div>
+        <button className="text-button auth-privacy" onClick={onPrivacy}>
+          Privacy
+        </button>
       </section>
     </main>
   );

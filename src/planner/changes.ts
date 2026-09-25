@@ -86,12 +86,22 @@ export function pasteDays(
   const configs: Record<string, DayConfig> = {};
   for (const target of new Set(targets)) {
     const existing = dayBlocks(data.blocks, target);
-    const current = dayConfig(data, target);
     const config = {
       enabled: true,
-      start: replace ? source.config.start : Math.min(source.config.start, current.start),
-      end: replace ? source.config.end : Math.max(source.config.end, current.end),
+      start: source.config.start,
+      end: source.config.end,
     };
+    if (
+      !replace &&
+      existing.some(
+        (block) =>
+          minuteAt(block.startAt, target) < config.start ||
+          minuteAt(block.endAt, target) > config.end,
+      )
+    )
+      throw new Error(
+        'Existing blocks fall outside the copied hours. Move them first or replace existing blocks.',
+      );
     if (source.blocks.some(({ start, end }) => !validClockRange(target, start, end)))
       throw new Error('A copied time is unavailable on this date. Adjust that block first.');
     if (

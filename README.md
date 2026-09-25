@@ -19,13 +19,13 @@ Without Firebase environment values the app runs a **local preview**, with an em
 - Editable preset library, block notes/completion, direct block deletion, multi-day copying with conflict detection, atomic replacement, and 20-step undo/redo. Select a day header and use Ctrl/Cmd+C then Ctrl/Cmd+V on another day to replace its schedule without a dialog; the copy button provides a touch-friendly alternative.
 - Light, dark, sage, rose, and system themes; adjustable timeline spacing, snap interval, time format, and week start. Fonts are bundled locally.
 - Native mobile notification settings for weekly planning (including interval ranges) and block transitions. Permission is requested only by an explicit device action.
-- Email/password registration, sign-in, password reset, persistent sign-in, and sign-out.
+- Email/password registration, sign-in, password reset, persistent sign-in, sign-out, and password-confirmed account deletion across all weeks.
 - Realtime subscriptions scoped to the authenticated user's UID.
 - Firestore schema validation and deny-by-default access rules, with emulator tests.
 - Local Auth/Firestore emulators and a test that edits from two separate browser sessions.
 - Android/iOS native project shells, desktop packaging, and GitHub Actions checks.
 
-This is a working development release, not a store-ready release. Calendar integrations, repeating blocks, account deletion/export, final app icons, store signing, durable offline edits, server push, and production abuse controls are future work. Native SDK toolchains and physical-device testing are required before distribution. See [notification behavior and limits](docs/NOTIFICATIONS.md).
+This is a testing beta, not a store-approved production release. [Downloads and installation](https://github.com/Voyager162/WeekDeck/releases) use unsigned Windows, ad-hoc signed/unnotarized macOS, Linux AppImage, and debug-signed Android preview packages. There is no installable iPhone download until Apple enrollment/signing is complete. [Store submission steps](docs/STORE_SUBMISSION.md) cover both mobile stores and the remaining owner inputs. Calendar integrations, repeating blocks, data export, durable offline edits, server push, automatic updates, and production abuse controls remain future work. Physical-device testing is still required. See [notification limits](docs/NOTIFICATIONS.md).
 
 ## Commands
 

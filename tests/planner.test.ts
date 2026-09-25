@@ -47,6 +47,23 @@ function shared(data: PlannerData, start = 480, end = 1080) {
   );
 }
 describe('shared hours and day clipboard', () => {
+  it('copies both boundaries through the non-replacing copy path on an empty day', () => {
+    const data = emptyPlanner();
+    data.days[day] = { enabled: true, start: 600, end: 1080 };
+    const next = applyChanges(data, pasteDays(data, captureDay(data, day), ['2026-09-22'], false));
+    expect(dayConfig(next, '2026-09-22')).toMatchObject({ start: 600, end: 1080 });
+  });
+  it('does not silently crop retained blocks when copying a narrower day', () => {
+    const data = emptyPlanner();
+    data.days['2026-09-22'] = { enabled: true, start: 600, end: 1080 };
+    data.blocks = [block(540, 600)];
+    const clip = captureDay(data, '2026-09-22');
+    expect(() => pasteDays(data, clip, [day], false)).toThrow('outside the copied hours');
+    expect(data.blocks).toHaveLength(1);
+    const next = applyChanges(data, pasteDays(data, clip, [day], true));
+    expect(next.blocks).toHaveLength(0);
+    expect(dayConfig(next, day)).toMatchObject({ start: 600, end: 1080 });
+  });
   it('keeps legacy hours until a shared range replaces all weeks, including hidden days', () => {
     const data = emptyPlanner();
     data.days[day] = { enabled: true, start: 600, end: 900 };

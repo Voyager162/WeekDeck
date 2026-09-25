@@ -1,0 +1,172 @@
+name: Release Beta
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-beta
+  cancel-in-progress: false
+env:
+  VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+  VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+  VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+  VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+jobs:
+  verify:
+    uses: ./.github/workflows/check.yml
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            arch: x64
+          - os: macos-15
+            platform: mac
+            arch: arm64
+          - os: macos-15-intel
+            platform: mac
+            arch: x64
+          - os: ubuntu-24.04
+            platform: linux
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run release:check
+      - run: npm run assets
+      - run: npm run build
+      - name: Package unsigned Windows/Linux beta
+        if: matrix.platform != 'mac'
+        run: npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Package ad-hoc signed Mac beta (not notarized)
+        if: matrix.platform == 'mac'
+        run: npx electron-builder --mac --${{ matrix.arch }} --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false
+      - name: Launch packaged Windows app
+        if: matrix.platform == 'win'
+        run: node scripts/smoke-desktop.mjs release/win-unpacked/Weekdeck.exe
+      - name: Launch packaged Mac app
+        if: matrix.platform == 'mac'
+        shell: bash
+        run: node scripts/smoke-desktop.mjs "$(find release -path '*/Weekdeck.app/Contents/MacOS/Weekdeck' -print -quit)"
+      - name: Launch packaged Linux app
+        if: matrix.platform == 'linux'
+        run: xvfb-run --auto-servernum node scripts/smoke-desktop.mjs release/linux-unpacked/weekdeck
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm run release:check
+      - run: npm run assets -- android
+      - run: npm run build
+      - run: npx cap sync android
+      - run: chmod +x android/gradlew
+      - run: ./gradlew assembleDebug bundleRelease lintRelease --no-daemon
+        working-directory: android
+      - name: Name preview download
+        shell: bash
+        run: |
+          mkdir -p release
+          VERSION=$(node -p "require('./package.json').version")
+          cp android/app/build/outputs/apk/debug/app-debug.apk "release/Weekdeck-${VERSION}-android-preview.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-preview
+          path: release/*.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-UNSIGNED-store-preparation
+          path: |
+            android/app/build/outputs/bundle/release/*.aab
+            android/app/build/reports/lint-results-release.html
+          if-no-files-found: error
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Select Xcode 26 or newer
+        shell: bash
+        run: |
+          XCODE=$(find /Applications -maxdepth 1 -name 'Xcode_26*.app' | sort | tail -1)
+          test -n "$XCODE"
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+          swift --version
+      - run: npm ci
+      - run: npm run release:check
+      - run: npm run assets -- ios
+      - run: npm run build
+      - run: npx cap sync ios
+      - name: Compile unsigned iOS archive
+        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath release/Weekdeck.xcarchive archive CODE_SIGNING_ALLOWED=NO MARKETING_VERSION=0.1.0 CURRENT_PROJECT_VERSION=1
+      - name: Include app privacy manifest in unsigned archive
+        run: |
+          APP=$(find release/Weekdeck.xcarchive/Products/Applications -maxdepth 1 -name '*.app' -print -quit)
+          cp distribution/ios/PrivacyInfo.xcprivacy "$APP/PrivacyInfo.xcprivacy"
+          plutil -lint "$APP/PrivacyInfo.xcprivacy"
+          ditto -c -k --keepParent release/Weekdeck.xcarchive release/Weekdeck-iOS-UNSIGNED.xcarchive.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-UNSIGNED-store-preparation
+          path: release/Weekdeck-iOS-UNSIGNED.xcarchive.zip
+          if-no-files-found: error
+  draft-release:
+    needs: [verify, desktop, android, ios]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-*
+          merge-multiple: true
+          path: downloads
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-preview
+          path: downloads
+      - name: Create checksums and draft prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          cp distribution/INSTALL.md downloads/INSTALL.md
+          cd downloads
+          sha256sum Weekdeck-* > SHA256SUMS.txt
+          cd ..
+          gh release create "v${VERSION}" downloads/* --draft --prerelease --target "$GITHUB_SHA" --title "Weekdeck ${VERSION}" --notes-file distribution/RELEASE_NOTES.md

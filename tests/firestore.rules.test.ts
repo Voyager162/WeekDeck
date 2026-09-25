@@ -281,3 +281,55 @@ describe('private weekly planner configuration', () => {
     );
   });
 });
+
+describe('account deletion lock', () => {
+  const fresh = () =>
+    env.authenticatedContext('alice', { auth_time: Math.floor(Date.now() / 1000) }).firestore();
+  it('requires recent owner authentication and an exact server timestamp', async () => {
+    const path = 'accountDeletions/alice';
+    for (const db of [
+      env.unauthenticatedContext().firestore(),
+      env.authenticatedContext('bob').firestore(),
+      env.authenticatedContext('alice', { auth_time: 1 }).firestore(),
+    ]) {
+      await assertFails(setDoc(doc(db, path), { requestedAt: serverTimestamp() }));
+    }
+    await assertFails(setDoc(doc(fresh(), path), { requestedAt: Timestamp.fromMillis(1) }));
+    await assertFails(
+      setDoc(doc(fresh(), path), { requestedAt: serverTimestamp(), email: 'private@example.test' }),
+    );
+    await assertSucceeds(setDoc(doc(fresh(), path), { requestedAt: serverTimestamp() }));
+    await assertSucceeds(getDoc(doc(fresh(), path)));
+    await assertFails(getDoc(doc(env.authenticatedContext('bob').firestore(), path)));
+    await assertFails(getDocs(collection(fresh(), 'accountDeletions')));
+    await assertFails(updateDoc(doc(fresh(), path), { requestedAt: serverTimestamp() }));
+    await assertFails(deleteDoc(doc(fresh(), path)));
+  });
+  it('blocks old and new device writes but permits cleanup after the lock', async () => {
+    const db = fresh();
+    const samples = [
+      ['blocks/a', block()],
+      [
+        'templates/work',
+        {
+          title: 'Work',
+          color: 'blue',
+          icon: 'briefcase',
+          duration: 60,
+          updatedAt: serverTimestamp(),
+        },
+      ],
+      ['days/2026-09-21', { enabled: true, start: 540, end: 1020, updatedAt: serverTimestamp() }],
+      ['settings/planner', { ...defaultPreferences, updatedAt: serverTimestamp() }],
+    ] as const;
+    for (const [path, data] of samples) await setDoc(doc(db, `users/alice/${path}`), data);
+    await setDoc(doc(db, 'accountDeletions/alice'), { requestedAt: serverTimestamp() });
+    for (const [path, data] of samples) {
+      const ref = doc(db, `users/alice/${path}`);
+      await assertFails(updateDoc(ref, { updatedAt: serverTimestamp() }));
+      await assertSucceeds(getDoc(ref));
+      await assertSucceeds(deleteDoc(ref));
+      await assertFails(setDoc(ref, data));
+    }
+  });
+});
