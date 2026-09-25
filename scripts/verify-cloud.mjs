@@ -110,10 +110,46 @@ try {
   await second.getByRole('button', { name: 'Save settings', exact: true }).click();
   await expect(first.locator('html')).toHaveAttribute('data-theme', 'sage', { timeout: 30_000 });
   await expect(isolated.locator('html')).toHaveAttribute('data-theme', 'light');
+  await second.getByRole('button', { name: 'Planner settings', exact: true }).click();
+  await second.getByRole('switch', { name: 'Shared day hours' }).check();
+  await second.getByLabel('Shared start time').fill('08:00');
+  await second.getByLabel('Shared end time').fill('18:00');
+  await second.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await expect(first.getByRole('button', { name: /^Start hours / }).first()).toHaveText('8 AM', {
+    timeout: 30_000,
+  });
+  await first.getByRole('button', { name: 'Monday settings', exact: true }).click();
+  await first.getByLabel('Start', { exact: true }).fill('08:30');
+  await first.getByRole('button', { name: 'Save hours', exact: true }).click();
+  await expect(second.getByRole('button', { name: /^Start hours / }).first()).toHaveText(
+    '8:30 AM',
+    { timeout: 30_000 },
+  );
+  await expect(second.getByRole('button', { name: /^Start hours / }).nth(1)).toHaveText('8 AM');
+  await expect(isolated.getByRole('button', { name: /^Start hours / }).first()).toHaveText('9 AM');
+  await first.getByRole('button', { name: 'Select Monday', exact: true }).click();
+  await first.getByRole('button', { name: 'New block', exact: true }).click();
+  await first.getByLabel('Block name').fill('Keyboard copy verification');
+  await first.getByRole('button', { name: 'Save block', exact: true }).click();
+  await first.getByRole('button', { name: 'Select Monday', exact: true }).click();
+  await first.keyboard.press('Control+c');
+  await first.getByRole('button', { name: 'Select Tuesday', exact: true }).click();
+  await first.keyboard.press('Control+v');
+  await expect(second.getByRole('button', { name: /^Keyboard copy verification,/ })).toHaveCount(
+    2,
+    { timeout: 30_000 },
+  );
+  await second
+    .getByRole('button', { name: 'Delete Keyboard copy verification', exact: true })
+    .nth(1)
+    .click();
+  await expect(first.getByRole('button', { name: /^Keyboard copy verification,/ })).toHaveCount(1, {
+    timeout: 30_000,
+  });
   await first.getByRole('button', { name: /^Sign out / }).click();
   await expect(first.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
   console.log(
-    'PASS: hosted sign-in, create/edit/complete/delete sync, persistence, sign-out, and cross-account/anonymous read denial.',
+    'PASS: hosted/desktop sign-in, block sync, shared hours and day overrides, keyboard copying, direct deletion, persistence, sign-out, and account isolation.',
   );
 } finally {
   await desktop?.close();

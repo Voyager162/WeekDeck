@@ -157,6 +157,10 @@ for (const width of [1440, 768, 390, 320]) {
     await expect(page.locator('.scheduled-block')).toHaveCount(0);
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await expect(page.locator('.scheduled-block')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Delete Read two chapters', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.locator('.scheduled-block')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await page.getByRole('button', { name: 'Redo', exact: true }).click();
     await expect(page.locator('.scheduled-block')).toHaveCount(0);
   });
@@ -209,7 +213,7 @@ test('drag follows pointer, previews gap fit, and resizes at either edge', async
     page.getByRole('button', { name: 'Study, 9:30 AM to 11 AM', exact: true }),
   ).toBeVisible();
 });
-test('day hours, drag-copy to multiple days, remove and restore', async ({ page }) => {
+test('day hours, keyboard-copy to multiple days, remove and restore', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await open(page);
   await add(page, 'Work session');
@@ -220,13 +224,16 @@ test('day hours, drag-copy to multiple days, remove and restore', async ({ page 
   await page.getByRole('button', { name: 'Tuesday settings', exact: true }).click();
   await expect(page.getByLabel('Start', { exact: true })).toHaveValue('10:00');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  const copy = await page.getByRole('button', { name: 'Copy Monday', exact: true }).boundingBox();
-  const heading = await page.locator(`[data-day-heading="${dates[1]}"]`).boundingBox();
-  await drag(page, { x: copy!.x + 8, y: copy!.y + 8 }, { x: heading!.x + 25, y: heading!.y + 25 });
-  await expect(page.getByRole('dialog', { name: 'Copy Monday' })).toBeVisible();
-  await expect(page.getByRole('checkbox', { name: /Tuesday/ })).toBeChecked();
-  await page.getByRole('checkbox', { name: /Wednesday/ }).check();
-  await page.getByRole('button', { name: 'Copy to 2 days' }).click();
+  await expect(page.getByText('Unplanned', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Select Monday', exact: true }).click();
+  await expect(page.locator(`[data-day-heading="${dates[0]}"]`)).toHaveClass(/selected-day/);
+  await page.keyboard.press('Control+c');
+  await page.getByRole('button', { name: 'Select Tuesday', exact: true }).click();
+  await page.keyboard.press('Control+v');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Work session,/ })).toHaveCount(2);
+  await page.getByRole('button', { name: 'Select Wednesday', exact: true }).click();
+  await page.keyboard.press('Control+v');
   await expect(page.getByRole('button', { name: /^Work session,/ })).toHaveCount(3);
   await page.getByRole('button', { name: 'Remove Monday', exact: true }).click();
   await page.getByRole('button', { name: 'Remove day', exact: true }).click();
@@ -234,6 +241,73 @@ test('day hours, drag-copy to multiple days, remove and restore', async ({ page 
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(page.locator('[data-lane]')).toHaveCount(7);
   await expect(page.getByRole('button', { name: /^Work session,/ })).toHaveCount(3);
+});
+test('clipboard snapshot, Command shortcuts, replacement and typing isolation', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page);
+  await add(page, 'Original Monday');
+  await add(page, 'Old Tuesday', dates[1]);
+  await page.getByRole('button', { name: 'Select Monday', exact: true }).click();
+  await page.keyboard.press('Meta+c');
+  await page.getByRole('button', { name: /^Original Monday,/ }).click();
+  await page.getByLabel('Block name').fill('Edited Monday');
+  await page.getByLabel('Block name').press('Control+a');
+  await page.getByLabel('Block name').press('Control+c');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: 'Save block', exact: true }).click();
+  await page.getByRole('button', { name: 'Select Tuesday', exact: true }).click();
+  await page.keyboard.press('Meta+v');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Original Monday,/ })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /^Old Tuesday,/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^Old Tuesday,/ })).toHaveCount(1);
+  await page.getByRole('button', { name: /^Edited Monday,/ }).click();
+  await page.getByLabel('Notes').focus();
+  await page.keyboard.press('Control+v');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator(`[data-lane="${dates[0]}"] .scheduled-block`)).toHaveCount(1);
+});
+test('shared hours persist across weeks, detach on resize, and undo atomically', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page);
+  await page.getByRole('button', { name: 'Planner settings', exact: true }).click();
+  await page.getByRole('switch', { name: 'Shared day hours' }).check();
+  await page.getByLabel('Shared start time').fill('08:00');
+  await page.getByLabel('Shared end time').fill('18:00');
+  await page.getByRole('button', { name: 'Save settings' }).click();
+  for (const day of dates)
+    await expect(page.getByRole('button', { name: `Start hours ${day}` })).toHaveText('8 AM');
+  await page.reload();
+  await page.getByRole('button', { name: 'Next week', exact: true }).click();
+  await page.getByRole('button', { name: 'Monday settings', exact: true }).click();
+  await expect(page.getByLabel('Start', { exact: true })).toHaveValue('08:00');
+  await expect(page.getByLabel('End', { exact: true })).toHaveValue('18:00');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Previous week', exact: true }).click();
+  const start = page.getByRole('button', { name: `Start hours ${dates[0]}` });
+  await start.focus();
+  await start.press('ArrowDown');
+  await expect(start).toHaveText('8:15 AM');
+  for (const day of dates.slice(1))
+    await expect(page.getByRole('button', { name: `Start hours ${day}` })).toHaveText('8 AM');
+  await page.getByRole('button', { name: 'Planner settings', exact: true }).click();
+  await expect(page.getByRole('switch', { name: 'Shared day hours' })).not.toBeChecked();
+  await expect(page.getByLabel('Shared start time')).toHaveValue('08:00');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(start).toHaveText('8 AM');
+  await page.getByRole('button', { name: 'Planner settings', exact: true }).click();
+  await expect(page.getByRole('switch', { name: 'Shared day hours' })).toBeChecked();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await page.reload();
+  await expect(start).toHaveText('8:15 AM');
+  await expect(page.getByRole('button', { name: `Start hours ${dates[1]}` })).toHaveText('8 AM');
 });
 test('preset editing, tap placement and all settings fit a narrow phone', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 760 });
@@ -252,6 +326,17 @@ test('preset editing, tap placement and all settings fit a narrow phone', async 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'dark theme', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('tab', { name: 'Planner', exact: true }).click();
+  await page.getByRole('switch', { name: 'Shared day hours' }).check();
+  await page.getByLabel('Shared start time').fill('08:00');
+  await page.getByLabel('Shared end time').fill('18:00');
+  await expect(
+    page
+      .locator('.toggle-row')
+      .filter({ has: page.getByRole('switch', { name: 'Shared day hours' }) })
+      .locator('.toggle-track'),
+  ).toHaveCSS('background-color', 'rgb(138, 211, 182)');
+  await page.screenshot({ path: 'test-results/mobile-shared-hours.png' });
   await page.getByRole('tab', { name: 'Notifications' }).click();
   await page.getByRole('switch', { name: 'Weekly planning reminder' }).check();
   await page.getByRole('switch', { name: 'Advanced reminder schedule' }).check();

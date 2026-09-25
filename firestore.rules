@@ -1,4 +1,9 @@
 rules_version = '2';
+// Owner-only users/{uid}: blocks (validated times/content, immutable createdAt),
+// templates (title/color/icon/duration), days (enabled/start/end), settings/planner
+// (appearance, snapping, notifications). All writes require server updatedAt.
+// Optional dayHours: {start,end,linked,version}; days.hoursVersion matches a UUID.
+// Legacy documents may omit these shared-hours fields. No public user documents.
 service cloud.firestore {
   match /databases/{database}/documents {
     function owner(uid) {
@@ -44,8 +49,14 @@ service cloud.firestore {
       allow create, update: if owner(uid) && validTemplate(request.resource.data);
     }
     // Per-date planning hours use local wall-clock minutes; blocks store instants.
+    function hoursVersion(value) {
+      return value is string && value.size() == 36
+        && value.matches('^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$');
+    }
     function validDay(data) {
-      return fields(data, ['enabled', 'start', 'end', 'updatedAt'])
+      return data.keys().hasAll(['enabled', 'start', 'end', 'updatedAt'])
+        && data.keys().hasOnly(['enabled', 'start', 'end', 'hoursVersion', 'updatedAt'])
+        && (!('hoursVersion' in data) || hoursVersion(data.hoursVersion))
         && data.enabled is bool && data.start is int && data.end is int
         && data.start >= 0 && data.end <= 1440 && data.end - data.start >= 15
         && data.updatedAt == request.time;
@@ -67,12 +78,20 @@ service cloud.firestore {
         && (!data.advanced || (data.end >= data.time && data.end - data.time <= 240));
     }
     function validSettings(data) {
-      return fields(data, ['theme', 'hourHeight', 'snap', 'timeFormat', 'weekStart', 'notifications', 'updatedAt'])
+      return data.keys().hasAll(['theme', 'hourHeight', 'snap', 'timeFormat', 'weekStart', 'notifications', 'updatedAt'])
+        && data.keys().hasOnly(['theme', 'hourHeight', 'snap', 'timeFormat', 'weekStart', 'notifications', 'dayHours', 'updatedAt'])
+        && (!('dayHours' in data) || validSharedHours(data.dayHours))
         && data.theme in ['light', 'dark', 'sage', 'rose', 'system']
         && data.hourHeight is int && data.hourHeight >= 48 && data.hourHeight <= 100
         && data.snap in [5, 15, 30] && data.timeFormat in ['12', '24']
         && data.weekStart in [0, 1] && validNotifications(data.notifications)
         && data.updatedAt == request.time;
+    }
+    function validSharedHours(data) {
+      return data is map && fields(data, ['start', 'end', 'linked', 'version'])
+        && data.start is int && data.end is int
+        && data.start >= 0 && data.end <= 1440 && data.end - data.start >= 15
+        && data.linked is bool && hoursVersion(data.version);
     }
     match /users/{uid}/settings/planner {
       allow read: if owner(uid);

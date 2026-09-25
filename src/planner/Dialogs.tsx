@@ -7,7 +7,7 @@ import {
   clockLabel,
   colors,
   dayBlocks,
-  defaultDay,
+  dayConfig,
   icons,
   minuteAt,
   parseTime,
@@ -84,7 +84,7 @@ export function BlockEditor({
     e.preventDefault();
     const a = parseTime(start),
       b = parseTime(end) || 1440;
-    const config = data.days[day] ?? defaultDay;
+    const config = dayConfig(data, day);
     if (!title.trim()) {
       setError('Add a block name.');
       return;
@@ -132,7 +132,7 @@ export function BlockEditor({
             Day
             <select aria-label="Day" value={day} onChange={(e) => setDay(e.target.value)}>
               {dates
-                .filter((d) => (data.days[d] ?? defaultDay).enabled)
+                .filter((d) => dayConfig(data, d).enabled)
                 .map((d) => (
                   <option key={d} value={d}>
                     {dayName(d)}, {new Date(`${d}T12:00`).getDate()}
@@ -487,6 +487,7 @@ export function Settings({
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
   const n = draft.notifications;
+  const hours = draft.dayHours ?? { start: 540, end: 1020, linked: false, version: '' };
   const setNotification = (change: Partial<typeof n>) =>
     setDraft((old) => ({ ...old, notifications: { ...old.notifications, ...change } }));
   useEffect(() => {
@@ -535,8 +536,8 @@ export function Settings({
           try {
             await onSave(draft);
             onClose();
-          } catch {
-            setError('Settings could not be saved.');
+          } catch (error) {
+            setError(error instanceof Error ? error.message : 'Settings could not be saved.');
             setBusy(false);
           }
         }}
@@ -591,6 +592,45 @@ export function Settings({
           {tab === 'planner' && (
             <>
               <h3>Planning preferences</h3>
+              <Toggle
+                label="Shared day hours"
+                checked={hours.linked}
+                onChange={(linked) => setDraft({ ...draft, dayHours: { ...hours, linked } })}
+              />
+              <div className="field-pair shared-hours">
+                <label>
+                  Start
+                  <input
+                    type="time"
+                    required
+                    disabled={!hours.linked}
+                    aria-label="Shared start time"
+                    value={timeInput(hours.start)}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        dayHours: { ...hours, start: parseTime(event.target.value) },
+                      })
+                    }
+                  />
+                </label>
+                <label>
+                  End
+                  <input
+                    type="time"
+                    required
+                    disabled={!hours.linked}
+                    aria-label="Shared end time"
+                    value={timeInput(hours.end)}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        dayHours: { ...hours, end: parseTime(event.target.value) || 1440 },
+                      })
+                    }
+                  />
+                </label>
+              </div>
               <div className="field-pair">
                 <label>
                   Week starts on

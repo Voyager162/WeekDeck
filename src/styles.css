@@ -635,29 +635,46 @@ h3,
   padding: 15px 11px 12px;
   border-left: 1px solid var(--border);
   position: relative;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+.day-heading.selected-day {
+  background: var(--accent-soft);
+  box-shadow: inset 0 3px var(--accent);
 }
 .day-title {
   display: flex;
   align-items: center;
   gap: 7px;
 }
-.day-title > span {
+.day-select {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0;
+  text-align: left;
+}
+.day-select > span {
   color: var(--muted);
   font-size: 11px;
   font-weight: 500;
 }
-.day-title > strong {
+.day-select > strong {
   font-size: 18px;
   font-weight: 600;
 }
-.day-title .day-copy-grip {
+.day-title .day-copy-button {
   margin-left: auto;
   width: 18px;
   height: 24px;
-  cursor: grab;
-  touch-action: none;
 }
-.day-heading.today .day-title > strong {
+.day-heading.today .day-select > strong {
   width: 28px;
   height: 28px;
   margin-top: -2px;
@@ -669,7 +686,7 @@ h3,
   color: var(--surface);
   font-size: 16px;
 }
-[data-theme='dark'] .day-heading.today .day-title > strong {
+[data-theme='dark'] .day-heading.today .day-select > strong {
   color: #172b22;
 }
 .day-meta {
@@ -785,6 +802,12 @@ h3,
   border-bottom: 1px solid var(--border);
   pointer-events: none;
 }
+.day-lane.selected-day .planning-range {
+  background: color-mix(in srgb, var(--accent-soft) 22%, transparent);
+  box-shadow:
+    inset 1px 0 var(--accent-soft),
+    inset -1px 0 var(--accent-soft);
+}
 .scheduled-block {
   position: absolute;
   left: 5px;
@@ -804,12 +827,33 @@ h3,
   gap: 4px;
   width: 100%;
   height: 100%;
-  padding: 10px 8px 6px;
+  padding: 10px 26px 6px 8px;
   text-align: left;
   border-radius: 4px;
   cursor: grab;
   overflow: hidden;
   touch-action: pan-y;
+}
+.scheduled-block .block-delete {
+  position: absolute;
+  top: 8px;
+  right: 2px;
+  width: 22px;
+  height: 24px;
+  padding: 0;
+  color: var(--color);
+  z-index: 6;
+}
+.scheduled-block .block-delete:hover {
+  background: var(--stroke);
+}
+.scheduled-block.compact .block-delete {
+  top: 50%;
+  transform: translateY(-50%);
+  height: min(24px, 100%);
+}
+.scheduled-block.tiny .block-delete svg {
+  max-height: calc(100% - 2px);
 }
 .block-title {
   font-size: 11px;
@@ -847,7 +891,7 @@ h3,
 .scheduled-block.compact .block-body {
   flex-direction: row;
   align-items: center;
-  padding: 1px 6px;
+  padding: 1px 26px 1px 6px;
 }
 .scheduled-block.compact .block-title {
   font-size: 10px;
@@ -977,20 +1021,15 @@ h3,
   font-size: 10px;
   margin-top: 4px;
 }
-.copy-drop {
+.sr-only {
   position: absolute;
-  inset: 0;
-  background: color-mix(in srgb, var(--accent-soft) 75%, transparent);
-  border: 2px dashed var(--accent);
-  z-index: 10;
-  pointer-events: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: calc(9.2 * var(--hour-height));
-  gap: 10px;
-  font-size: 12px;
-  color: var(--accent);
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .now-line {
   position: absolute;
@@ -1770,13 +1809,13 @@ input[type='checkbox'] {
   .day-title {
     flex: 1;
   }
-  .day-title > span {
+  .day-select > span {
     font-size: 12px;
   }
-  .day-title > strong {
+  .day-select > strong {
     font-size: 20px;
   }
-  .day-title .day-copy-grip {
+  .day-title .day-copy-button {
     width: 30px;
     height: 34px;
     margin-left: 3px;
@@ -1815,11 +1854,20 @@ input[type='checkbox'] {
     border-radius: 6px;
   }
   .block-body {
-    padding: 10px 11px 7px;
+    padding: 10px 36px 7px 11px;
     gap: 4px;
   }
   .block-title {
     font-size: 13px;
+  }
+  .scheduled-block .block-delete {
+    width: 30px;
+    height: 30px;
+    right: 3px;
+    top: 9px;
+  }
+  .scheduled-block.compact .block-body {
+    padding-right: 36px;
   }
   .block-time {
     font-size: 10px;

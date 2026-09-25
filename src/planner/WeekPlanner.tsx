@@ -17,7 +17,6 @@ import {
   ChevronRight,
   Cloud,
   CloudOff,
-  Copy,
   Layers2,
   LogOut,
   PanelLeftClose,
@@ -36,11 +35,9 @@ import {
   blockFromSlot,
   clockLabel,
   dayBlocks,
-  defaultDay,
+  dayConfig,
   fitSlot,
   minuteAt,
-  validSlot,
-  validClockRange,
   weekDates,
   weekOf,
   type DayConfig,
@@ -48,6 +45,7 @@ import {
   type Template,
 } from './model';
 import { usePlanner, type Change } from './store';
+import { captureDay, dayChanges, pasteDays, settingsChanges, type DayClipboard } from './changes';
 import { useNotifications } from './notifications';
 import { Board, Preset, type DragItem } from './Board';
 import { BlockEditor, CopyDialog, DayEditor, Settings, TemplateEditor } from './Dialogs';
@@ -95,11 +93,11 @@ export function WeekPlanner({ user }: { user: User | null }) {
   const [armed, setArmed] = useState<Template | null>(null),
     [dialog, setDialog] = useState<Dialog>(null);
   const [drag, setDrag] = useState<DragItem | null>(null),
-    [ghost, setGhost] = useState<Slot | null>(null),
-    [copyTarget, setCopyTarget] = useState<string | null>(null);
+    [ghost, setGhost] = useState<Slot | null>(null);
+  const clipboard = useRef<DayClipboard | null>(null);
+  const [announcement, setAnnouncement] = useState('');
   const dragRef = useRef<DragItem | null>(null),
     ghostRef = useRef<Slot | null>(null),
-    targetRef = useRef<string | null>(null),
     point = useRef<{ x: number; y: number } | null>(null);
   const notifications = useNotifications(
     user?.uid,
@@ -107,7 +105,7 @@ export function WeekPlanner({ user }: { user: User | null }) {
     data.preferences.notifications,
     ready,
   );
-  const visible = dates.filter((day) => (data.days[day] ?? defaultDay).enabled);
+  const visible = dates.filter((day) => dayConfig(data, day).enabled);
   const activeDay = visible.includes(selectedDay) ? selectedDay : visible[0];
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -146,7 +144,9 @@ export function WeekPlanner({ user }: { user: User | null }) {
     await store.commit(changes);
   }
   function perform(action: Promise<unknown>) {
-    void action.catch(() => undefined);
+    void action.catch((error) =>
+      store.setError(error instanceof Error ? error.message : 'Changes could not be saved.'),
+    );
   }
   const saveBlock = (block: Block) =>
     commit([
@@ -158,14 +158,51 @@ export function WeekPlanner({ user }: { user: User | null }) {
       },
     ]);
   const removeBlock = (block: Block) => commit([{ kind: 'blocks', id: block.id, before: block }]);
-  const saveDay = (day: string, config: DayConfig) =>
-    commit([{ kind: 'days', id: day, before: data.days[day], after: config }]);
+  const saveDay = (day: string, config: DayConfig) => commit(dayChanges(data, { [day]: config }));
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        !(event.ctrlKey || event.metaKey) ||
+        event.altKey ||
+        event.shiftKey ||
+        event.repeat ||
+        dialog ||
+        drag ||
+        busy ||
+        !ready ||
+        !activeDay ||
+        (event.target instanceof HTMLElement &&
+          event.target.closest('input, textarea, select, [contenteditable]')) ||
+        window.getSelection()?.toString()
+      )
+        return;
+      const key = event.key.toLowerCase();
+      if (key === 'c') {
+        event.preventDefault();
+        clipboard.current = captureDay(data, activeDay);
+        setAnnouncement(
+          `${new Date(`${activeDay}T12:00`).toLocaleDateString([], { weekday: 'long' })} copied`,
+        );
+      } else if (key === 'v' && clipboard.current) {
+        event.preventDefault();
+        const source = clipboard.current;
+        perform(
+          (async () => {
+            await commit(pasteDays(data, source, [activeDay], true));
+            setAnnouncement('Day pasted');
+          })(),
+        );
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  });
   function place(day: string, minute: number) {
     const slot = fitSlot(
       day,
       minute,
       armed?.duration ?? 60,
-      data.days[day] ?? defaultDay,
+      dayConfig(data, day),
       data.blocks,
       data.preferences.snap,
     );
@@ -181,7 +218,7 @@ export function WeekPlanner({ user }: { user: User | null }) {
   function newBlock() {
     const day = activeDay;
     if (!day) return;
-    const config = data.days[day] ?? defaultDay;
+    const config = dayConfig(data, day);
     for (let minute = config.start; minute < config.end; minute += 5) {
       const slot = fitSlot(day, minute, 60, config, data.blocks, data.preferences.snap);
       if (slot) {
@@ -201,28 +238,21 @@ export function WeekPlanner({ user }: { user: User | null }) {
     const p = point.current,
       item = dragRef.current;
     if (!p || !item) return;
-    let slot: Slot | null = null,
-      target: string | null = null;
+    let slot: Slot | null = null;
     const timeline = document.querySelector('.timeline-scroll')?.getBoundingClientRect();
     const viewport = document.querySelector('.day-head-scroll')?.getBoundingClientRect();
-    for (const element of document.querySelectorAll<HTMLElement>(
-      item.kind === 'day' ? '[data-day-heading], [data-lane]' : '[data-lane]',
-    )) {
+    for (const element of document.querySelectorAll<HTMLElement>('[data-lane]')) {
       const rect = element.getBoundingClientRect();
       if (
         !rect.width ||
         (viewport && (p.x < viewport.left || p.x >= viewport.right)) ||
         p.x < rect.left ||
         p.x >= rect.right ||
-        p.y < (element.dataset.dayHeading ? rect.top : Math.max(rect.top, timeline?.top ?? 0)) ||
+        p.y < Math.max(rect.top, timeline?.top ?? 0) ||
         p.y > Math.min(rect.bottom, timeline?.bottom ?? innerHeight)
       )
         continue;
-      const day = element.dataset.lane ?? element.dataset.dayHeading!;
-      if (item.kind === 'day') {
-        if (day !== item.day) target = day;
-        break;
-      }
+      const day = element.dataset.lane!;
       const desired = ((p.y - rect.top) * 60) / data.preferences.hourHeight;
       const duration =
         item.kind === 'template'
@@ -232,7 +262,7 @@ export function WeekPlanner({ user }: { user: User | null }) {
         day,
         desired,
         duration,
-        data.days[day] ?? defaultDay,
+        dayConfig(data, day),
         data.blocks,
         data.preferences.snap,
         item.kind === 'block' ? item.block.id : undefined,
@@ -240,9 +270,7 @@ export function WeekPlanner({ user }: { user: User | null }) {
       break;
     }
     ghostRef.current = slot;
-    targetRef.current = target;
     setGhost(slot);
-    setCopyTarget(target);
   }
   function startDrag(event: DragStartEvent) {
     const item = event.active.data.current as DragItem;
@@ -264,16 +292,12 @@ export function WeekPlanner({ user }: { user: User | null }) {
     point.current = null;
     setGhost(null);
     ghostRef.current = null;
-    setCopyTarget(null);
-    targetRef.current = null;
   }
   function endDrag() {
     updateGhost();
     const item = dragRef.current,
       slot = ghostRef.current;
-    if (item?.kind === 'day' && targetRef.current)
-      setDialog({ kind: 'copy', day: item.day, target: targetRef.current });
-    else if (slot && item?.kind === 'template')
+    if (slot && item?.kind === 'template')
       perform(saveBlock(blockFromSlot(item.template.title, item.template.color, slot)));
     else if (slot && item?.kind === 'block')
       perform(
@@ -286,62 +310,13 @@ export function WeekPlanner({ user }: { user: User | null }) {
     clearDrag();
   }
   async function copyDay(source: string, targets: string[], replace: boolean) {
-    const changes: Change[] = [],
-      sourceConfig = data.days[source] ?? defaultDay;
-    for (const target of targets) {
-      const existing = dayBlocks(data.blocks, target);
-      const config = replace
-        ? sourceConfig
-        : {
-            enabled: true,
-            start: Math.min(sourceConfig.start, (data.days[target] ?? defaultDay).start),
-            end: Math.max(sourceConfig.end, (data.days[target] ?? defaultDay).end),
-          };
-      const sourceBlocks = dayBlocks(data.blocks, source);
-      if (
-        sourceBlocks.some(
-          (b) => !validClockRange(target, minuteAt(b.startAt, source), minuteAt(b.endAt, source)),
-        )
-      )
-        throw new Error('A copied time is unavailable on this date. Adjust that block first.');
-      const copied = sourceBlocks.map((b) => ({
-        ...b,
-        id: crypto.randomUUID(),
-        completed: false,
-        startAt: atMinute(target, minuteAt(b.startAt, source)),
-        endAt: atMinute(target, minuteAt(b.endAt, source)),
-      }));
-      if (
-        !replace &&
-        copied.some(
-          (b) =>
-            !validSlot(
-              target,
-              minuteAt(b.startAt, target),
-              minuteAt(b.endAt, target),
-              config,
-              existing,
-            ),
-        )
-      )
-        throw new Error('Some blocks overlap. Choose another day or replace existing blocks.');
-      if (replace)
-        for (const block of existing) changes.push({ kind: 'blocks', id: block.id, before: block });
-      for (const block of copied) changes.push({ kind: 'blocks', id: block.id, after: block });
-      changes.push({
-        kind: 'days',
-        id: target,
-        before: data.days[target],
-        after: { ...config, enabled: true },
-      });
-    }
-    await commit(changes);
+    await commit(pasteDays(data, captureDay(data, source), targets, replace));
   }
   const plannedMinutes = data.blocks
     .filter((b) => dates.includes(dateKey(new Date(b.startAt))))
     .reduce((sum, b) => sum + (b.endAt - b.startAt) / 60000, 0);
   const totalMinutes = visible.reduce((sum, day) => {
-    const c = data.days[day] ?? defaultDay;
+    const c = dayConfig(data, day);
     return sum + c.end - c.start;
   }, 0);
   const weekLabel = `${new Date(`${week}T12:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' })} - ${new Date(`${dates[6]}T12:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
@@ -546,9 +521,7 @@ export function WeekPlanner({ user }: { user: User | null }) {
                         <button
                           key={day}
                           onClick={() =>
-                            perform(
-                              saveDay(day, { ...(data.days[day] ?? defaultDay), enabled: true }),
-                            )
+                            perform(saveDay(day, { ...dayConfig(data, day), enabled: true }))
                           }
                         >
                           <Plus size={14} />
@@ -620,12 +593,12 @@ export function WeekPlanner({ user }: { user: User | null }) {
                 onClick={() =>
                   perform(
                     commit(
-                      dates.map((day) => ({
-                        kind: 'days',
-                        id: day,
-                        before: data.days[day],
-                        after: { ...defaultDay },
-                      })),
+                      dayChanges(
+                        data,
+                        Object.fromEntries(
+                          dates.map((day) => [day, { ...dayConfig(data, day), enabled: true }]),
+                        ),
+                      ),
                     ),
                   )
                 }
@@ -641,7 +614,7 @@ export function WeekPlanner({ user }: { user: User | null }) {
               disabled={busy || !ready}
               ghost={ghost}
               drag={drag}
-              copyTarget={copyTarget}
+              onSelect={setSelectedDay}
               onPlace={place}
               onEdit={(block) =>
                 setDialog({
@@ -655,6 +628,7 @@ export function WeekPlanner({ user }: { user: User | null }) {
                 })
               }
               onBlockSave={(block) => perform(saveBlock(block))}
+              onBlockDelete={(block) => perform(removeBlock(block))}
               onDaySave={(day, config) => perform(saveDay(day, config))}
               onDaySettings={(day) => setDialog({ kind: 'day', day })}
               onRemove={(day) => setDialog({ kind: 'remove', day })}
@@ -663,6 +637,9 @@ export function WeekPlanner({ user }: { user: User | null }) {
             />
           )}
           <footer className="planner-footer">
+            <span className="sr-only" role="status">
+              {announcement}
+            </span>
             <button {...libraryControl} aria-expanded={library}>
               <Layers2 size={14} />
               <span>Block library</span>
@@ -676,30 +653,19 @@ export function WeekPlanner({ user }: { user: User | null }) {
       <DragOverlay dropAnimation={null}>
         {drag && (
           <div
-            className={`drag-overlay color-${drag.kind === 'template' ? drag.template.color : drag.kind === 'block' ? blockColor(drag.block) : 'teal'}`}
+            className={`drag-overlay color-${drag.kind === 'template' ? drag.template.color : blockColor(drag.block)}`}
           >
-            {drag.kind === 'day' ? (
-              <>
-                <Copy size={18} />
-                <strong>
-                  {new Date(`${drag.day}T12:00`).toLocaleDateString([], { weekday: 'long' })}
-                </strong>
-              </>
-            ) : (
-              <>
-                {drag.kind === 'template' && <TemplateIcon name={drag.template.icon} />}
-                <div>
-                  <strong>
-                    {drag.kind === 'template' ? drag.template.title : drag.block.title}
-                  </strong>
-                  <small>
-                    {ghost
-                      ? `${clockLabel(ghost.start, data.preferences.timeFormat)} - ${clockLabel(ghost.end, data.preferences.timeFormat)}`
-                      : ' '}
-                  </small>
-                </div>
-              </>
-            )}
+            <>
+              {drag.kind === 'template' && <TemplateIcon name={drag.template.icon} />}
+              <div>
+                <strong>{drag.kind === 'template' ? drag.template.title : drag.block.title}</strong>
+                <small>
+                  {ghost
+                    ? `${clockLabel(ghost.start, data.preferences.timeFormat)} - ${clockLabel(ghost.end, data.preferences.timeFormat)}`
+                    : ' '}
+                </small>
+              </div>
+            </>
           </div>
         )}
       </DragOverlay>
@@ -735,7 +701,7 @@ export function WeekPlanner({ user }: { user: User | null }) {
       {dialog?.kind === 'day' && (
         <DayEditor
           day={dialog.day}
-          config={data.days[dialog.day] ?? defaultDay}
+          config={dayConfig(data, dialog.day)}
           blocks={data.blocks}
           onSave={(config) => saveDay(dialog.day, config)}
           onClose={() => setDialog(null)}
@@ -756,11 +722,7 @@ export function WeekPlanner({ user }: { user: User | null }) {
           preferences={data.preferences}
           initialTab={dialog.tab}
           notifications={notifications}
-          onSave={(preferences) =>
-            commit([
-              { kind: 'settings', id: 'planner', before: data.preferences, after: preferences },
-            ])
-          }
+          onSave={(preferences) => commit(settingsChanges(data, preferences))}
           onClose={() => setDialog(null)}
         />
       )}
@@ -790,12 +752,7 @@ export function WeekPlanner({ user }: { user: User | null }) {
                       id: block.id,
                       before: block,
                     })),
-                    {
-                      kind: 'days',
-                      id: day,
-                      before: data.days[day],
-                      after: { ...(data.days[day] ?? defaultDay), enabled: false },
-                    },
+                    ...dayChanges(data, { [day]: { ...dayConfig(data, day), enabled: false } }),
                   ]).then(() => setDialog(null)),
                 );
               }}

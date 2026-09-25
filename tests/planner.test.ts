@@ -5,6 +5,8 @@ import {
   clockLabel,
   defaultDay,
   defaultPreferences,
+  dayConfig,
+  emptyPlanner,
   fitSlot,
   minuteAt,
   resizeSlot,
@@ -13,10 +15,145 @@ import {
   weekDates,
   weekOf,
 } from '../src/planner/model';
+import { captureDay, dayChanges, pasteDays, settingsChanges } from '../src/planner/changes';
+import type { Change } from '../src/planner/store';
+import type { PlannerData } from '../src/planner/model';
 import { notificationPlan } from '../src/planner/notificationPlan';
 
 const day = '2026-09-21';
 const block = (start: number, end: number) => blockFromSlot('Work', 'blue', { day, start, end });
+function applyChanges(data: PlannerData, changes: Change[]): PlannerData {
+  const next = structuredClone(data);
+  for (const change of changes) {
+    if (change.kind === 'settings') next.preferences = change.after as PlannerData['preferences'];
+    if (change.kind === 'days') {
+      if (change.after) next.days[change.id] = change.after as PlannerData['days'][string];
+      else delete next.days[change.id];
+    }
+    if (change.kind === 'blocks') {
+      next.blocks = next.blocks.filter((block) => block.id !== change.id);
+      if (change.after) next.blocks.push(change.after as PlannerData['blocks'][number]);
+    }
+  }
+  return next;
+}
+function shared(data: PlannerData, start = 480, end = 1080) {
+  return applyChanges(
+    data,
+    settingsChanges(data, {
+      ...data.preferences,
+      dayHours: { start, end, linked: true, version: '' },
+    }),
+  );
+}
+describe('shared hours and day clipboard', () => {
+  it('keeps legacy hours until a shared range replaces all weeks, including hidden days', () => {
+    const data = emptyPlanner();
+    data.days[day] = { enabled: true, start: 600, end: 900 };
+    data.days['2027-01-04'] = { enabled: false, start: 720, end: 1440 };
+    expect(dayConfig(data, day).start).toBe(600);
+    const next = shared(data);
+    for (const date of [day, '2027-01-04', '2028-02-01'])
+      expect(dayConfig(next, date)).toMatchObject({ start: 480, end: 1080 });
+    expect(dayConfig(next, '2027-01-04').enabled).toBe(false);
+  });
+  it('detaches only the edited day, persists other hours, and undoes both changes together', () => {
+    const data = shared(emptyPlanner());
+    const changes = dayChanges(data, { [day]: { enabled: true, start: 600, end: 1080 } });
+    expect(changes).toHaveLength(2);
+    const next = applyChanges(data, changes);
+    expect(next.preferences.dayHours?.linked).toBe(false);
+    expect(dayConfig(next, day).start).toBe(600);
+    expect(dayConfig(next, '2026-10-01').start).toBe(480);
+    const undo = applyChanges(
+      next,
+      changes.map((c) => ({ ...c, before: c.after, after: c.before })),
+    );
+    expect(undo.preferences.dayHours?.linked).toBe(true);
+    expect(dayConfig(undo, day).start).toBe(480);
+  });
+  it('reapplying hours supersedes old overrides without bringing them back on unlink', () => {
+    const first = shared(emptyPlanner());
+    const detached = applyChanges(
+      first,
+      dayChanges(first, { [day]: { enabled: true, start: 600, end: 1080 } }),
+    );
+    const next = shared(detached, 420, 1020);
+    expect(next.preferences.dayHours?.version).not.toBe(first.preferences.dayHours?.version);
+    const unlinked = applyChanges(
+      next,
+      dayChanges(next, { '2026-09-22': { enabled: true, start: 480, end: 1020 } }),
+    );
+    expect(dayConfig(unlinked, day).start).toBe(420);
+    expect(dayConfig(unlinked, '2027-01-04').start).toBe(420);
+  });
+  it('hiding, restoring, or saving unchanged hours does not detach the master', () => {
+    const data = shared(emptyPlanner());
+    const changes = dayChanges(data, { [day]: { ...dayConfig(data, day), enabled: false } });
+    expect(changes).toHaveLength(1);
+    expect(applyChanges(data, changes).preferences.dayHours?.linked).toBe(true);
+  });
+  it('validates shared ranges and preserves existing blocks outside new hours', () => {
+    const data = emptyPlanner();
+    data.blocks = [block(540, 600)];
+    expect(shared(data, 720, 1020).blocks).toEqual(data.blocks);
+    for (const [start, end] of [
+      [-1, 600],
+      [600, 610],
+      [540, 1441],
+      [NaN, 600],
+      [540.5, 600],
+    ])
+      expect(() => shared(data, start, end)).toThrow('End time');
+    const toggled = settingsChanges(data, {
+      ...data.preferences,
+      dayHours: { start: 540, end: 1020, linked: false, version: '' },
+    });
+    expect(applyChanges(data, toggled).preferences.dayHours).toBeUndefined();
+  });
+  it('copies a stable snapshot and replaces targets with new IDs and reset completion', () => {
+    const data = emptyPlanner();
+    data.blocks = [{ ...block(540, 600), completed: true, notes: 'Keep notes' }];
+    const clip = captureDay(data, day);
+    data.blocks[0].title = 'Changed later';
+    const changes = pasteDays(data, clip, [day, '2026-09-22', '2026-09-22'], true);
+    const next = applyChanges(data, changes);
+    expect(next.blocks).toHaveLength(2);
+    expect(new Set(next.blocks.map((b) => b.id)).size).toBe(2);
+    for (const b of next.blocks)
+      expect(b).toMatchObject({ title: 'Work', completed: false, notes: 'Keep notes' });
+    const restored = applyChanges(
+      next,
+      changes.map((c) => ({ ...c, after: c.before, before: c.after })),
+    );
+    expect(restored.blocks).toEqual(data.blocks);
+  });
+  it('detaches shared hours when pasting different hours and can copy empty days', () => {
+    const clip = captureDay(emptyPlanner(), day);
+    const data = shared(emptyPlanner());
+    data.blocks = [block(540, 600)];
+    const next = applyChanges(data, pasteDays(data, clip, [day], true));
+    expect(next.blocks).toHaveLength(0);
+    expect(next.preferences.dayHours?.linked).toBe(false);
+    expect(dayConfig(next, day)).toMatchObject({ start: 540, end: 1020 });
+    expect(dayConfig(next, '2026-09-22')).toMatchObject({ start: 480, end: 1080 });
+  });
+  it('rejects a nonexistent destination time without producing partial changes', () => {
+    const previous = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    try {
+      const data = emptyPlanner();
+      data.blocks = [block(120, 180)];
+      expect(() =>
+        pasteDays(data, captureDay(data, day), ['2026-03-09', '2026-03-08'], true),
+      ).toThrow('unavailable');
+      expect(data.blocks).toHaveLength(1);
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
+  });
+});
 describe('weekly scheduling', () => {
   it('starts on Monday or Sunday across month and year boundaries', () => {
     expect(weekOf('2027-01-01')).toBe('2026-12-28');

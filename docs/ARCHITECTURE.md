@@ -34,8 +34,10 @@ The weekly query uses a single-field range/order on `startAt`, with no custom co
 Additional owner-only paths:
 
 - `users/{uid}/templates/{id}`: title, palette color, icon enum, duration (15-240 minutes), updatedAt.
-- `users/{uid}/days/{YYYY-MM-DD}`: enabled, start/end wall-clock minutes, updatedAt. Missing dates default to enabled, 9am-5pm.
-- `users/{uid}/settings/planner`: theme, hourHeight, snap, timeFormat, weekStart, validated notification settings, updatedAt. A transaction initializes this document and default presets once.
+- `users/{uid}/days/{YYYY-MM-DD}`: enabled, start/end wall-clock minutes, optional hoursVersion, updatedAt. Missing dates default to enabled, 9am-5pm until shared hours are set.
+- `users/{uid}/settings/planner`: theme, hourHeight, snap, timeFormat, weekStart, validated notification settings, optional dayHours, updatedAt. A transaction initializes this document and default presets once.
+
+`dayHours` contains start/end, a linked flag, and a UUID version. Applying a shared range creates a new version that supersedes older date overrides across every week without bulk-fetching or rewriting the account history. A per-day hours change stamps the current version and unlinks the master in the same undoable batch. Other days retain the shared baseline; older overrides do not reappear. Removing/restoring a day does not unlink hours. Turning the master off manually retains its last range. Blocks outside a newly shortened master window remain stored and visible on the full-day timeline.
 
 `src/planner/model.ts` contains gap fitting, date/clock conversions and resize constraints. `Board.tsx` uses DndKit for mouse/touch dragging and captured pointer events for resize handles. Screen coordinates are tracked independently of DndKit's scroll-adjusted drag delta. The mobile source drawer remains mounted but transparent during a drag so its touch target stays connected. `store.ts` applies command batches to local preview storage or Firestore, with inverse commands for undo/redo. Copy/replace operations are atomic and limited to 450 document changes per command.
 
@@ -43,7 +45,7 @@ Additional owner-only paths:
 
 Concurrent edits to one block use last-committed-write-wins behavior. The editor saves a full editable block, so the later writer can replace an earlier writer's field changes. Different block documents do not conflict. Firestore supplies the synchronization transport, not collaborative field merging.
 
-The client prevents overlapping placements, resizing through neighbors, and shrinking day hours over existing blocks. Copying merges only into free time unless replacement is explicitly selected. These are client scheduling constraints, not cross-document security rules. Simultaneous conflicting edits on separate devices can still create overlaps; a future server transaction/revision design is needed for strict collaborative locking. Undo history is per-session, not synchronized.
+The client prevents overlapping placements, resizing through neighbors, and shrinking individual day hours over existing blocks. The explicit copy dialog merges only into free time unless replacement is selected. Selecting a day header and using Ctrl/Cmd+C captures a session-local snapshot of its hours and blocks; Ctrl/Cmd+V replaces the selected destination directly, with Undo available. The app does not access the system clipboard or intercept shortcuts while editing fields or selecting text. Day headers no longer support drag-to-copy; block dragging is unchanged. These are client scheduling constraints, not cross-document security rules. Simultaneous conflicting edits on separate devices can still create overlaps; a future server transaction/revision design is needed for strict collaborative locking. Undo history is per-session, not synchronized.
 
 Signed-in schedules use memory caching, not a durable disk cache. Temporary disconnected writes remain pending in the current session; the UI waits for the backend acknowledgement. Do not close the app before a pending save finishes. Offline writes do not survive a restart. Durable offline editing with conflict UX is a separate future feature. [Firestore listeners](https://firebase.google.com/docs/firestore/query-data/listen) and [offline behavior](https://firebase.google.com/docs/firestore/manage-data/enable-offline).
 

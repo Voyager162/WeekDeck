@@ -14,9 +14,9 @@ Without Firebase environment values the app runs a **local preview**, with an em
 
 ## What's included
 
-- Weekly timeline with adjustable day hours, day removal/restoration, and a focused day layout on phones.
+- Weekly timeline with shared start/end hours across all weeks, individual day adjustments, day removal/restoration, and a focused day layout on phones. Adjusting one day unlinks shared hours without changing the others.
 - Mouse and long-press touch dragging, cursor-following blocks, destination ghosts, gap fitting, and top/bottom resizing. Tap-to-place and form editing provide alternatives to dragging.
-- Editable preset library, block notes/completion, multi-day copying with conflict detection, atomic replacement, and 20-step undo/redo.
+- Editable preset library, block notes/completion, direct block deletion, multi-day copying with conflict detection, atomic replacement, and 20-step undo/redo. Select a day header and use Ctrl/Cmd+C then Ctrl/Cmd+V on another day to replace its schedule without a dialog; the copy button provides a touch-friendly alternative.
 - Light, dark, sage, rose, and system themes; adjustable timeline spacing, snap interval, time format, and week start. Fonts are bundled locally.
 - Native mobile notification settings for weekly planning (including interval ranges) and block transitions. Permission is requested only by an explicit device action.
 - Email/password registration, sign-in, password reset, persistent sign-in, and sign-out.

@@ -19,13 +19,15 @@ export type Template = {
   icon: (typeof icons)[number];
   duration: number;
 };
-export type DayConfig = { enabled: boolean; start: number; end: number };
+export type DayConfig = { enabled: boolean; start: number; end: number; hoursVersion?: string };
+export type SharedHours = { start: number; end: number; linked: boolean; version: string };
 export type Preferences = {
   theme: 'light' | 'dark' | 'sage' | 'rose' | 'system';
   hourHeight: number;
   snap: number;
   timeFormat: '12' | '24';
   weekStart: 0 | 1;
+  dayHours?: SharedHours;
   notifications: {
     planning: boolean;
     day: number;
@@ -76,6 +78,14 @@ export function emptyPlanner(): PlannerData {
     days: {},
     preferences: structuredClone(defaultPreferences),
   };
+}
+export function dayConfig(data: PlannerData, day: string): DayConfig {
+  const config = data.days[day] ?? defaultDay;
+  const hours = data.preferences.dayHours;
+  // A new shared range supersedes older overrides, even on weeks not loaded yet.
+  if (hours && (hours.linked || config.hoursVersion !== hours.version))
+    return { ...config, start: hours.start, end: hours.end };
+  return config;
 }
 export function weekOf(key: string, start: 0 | 1 = 1) {
   const weekday = new Date(`${key}T12:00:00`).getDay();

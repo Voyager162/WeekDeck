@@ -10,6 +10,7 @@ import {
 import {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -106,6 +107,8 @@ describe('private user schedules', () => {
 });
 
 describe('private weekly planner configuration', () => {
+  const version = 'c84d810c-6a13-4a27-944d-d0540e9f267e';
+  const dayHours = { start: 480, end: 1080, linked: true, version };
   const samples = () => [
     {
       path: 'templates/work',
@@ -122,6 +125,20 @@ describe('private weekly planner configuration', () => {
       data: { enabled: true, start: 540, end: 1020, updatedAt: serverTimestamp() },
     },
     { path: 'settings/planner', data: { ...defaultPreferences, updatedAt: serverTimestamp() } },
+    {
+      path: 'days/2026-09-22',
+      data: {
+        enabled: true,
+        start: 480,
+        end: 1080,
+        hoursVersion: version,
+        updatedAt: serverTimestamp(),
+      },
+    },
+    {
+      path: 'settings/planner',
+      data: { ...defaultPreferences, dayHours, updatedAt: serverTimestamp() },
+    },
   ];
   it('allows owner CRUD on every new schema', async () => {
     const db = env.authenticatedContext('alice').firestore();
@@ -186,6 +203,8 @@ describe('private weekly planner configuration', () => {
     { start: 600, end: 600 },
     { start: 539.5 },
     { enabled: 'yes' },
+    { hoursVersion: 'x'.repeat(1000) },
+    { hoursVersion: 1 },
   ])('rejects invalid hours %j', async (patch) => {
     await assertFails(
       setDoc(doc(env.authenticatedContext('alice').firestore(), 'users/alice/days/2026-09-21'), {
@@ -221,5 +240,44 @@ describe('private weekly planner configuration', () => {
     const db = env.authenticatedContext('alice').firestore();
     await assertFails(setDoc(doc(db, 'users/alice/days/admin'), samples()[1].data));
     await assertFails(setDoc(doc(db, 'users/alice/settings/admin'), samples()[2].data));
+  });
+  it.each([
+    { start: -1 },
+    { end: 1441 },
+    { start: 600, end: 610 },
+    { start: 540.5 },
+    { linked: 'true' },
+    { version: '' },
+    { version: 'x'.repeat(1000) },
+    { version: 123 },
+    { admin: true },
+  ])('rejects malformed shared hours on create and update %j', async (patch) => {
+    const ref = doc(env.authenticatedContext('alice').firestore(), 'users/alice/settings/planner');
+    const data = { ...defaultPreferences, dayHours, updatedAt: serverTimestamp() };
+    await assertFails(setDoc(ref, { ...data, dayHours: { ...dayHours, ...patch } }));
+    await assertSucceeds(setDoc(ref, data));
+    await assertFails(
+      updateDoc(ref, { dayHours: { ...dayHours, ...patch }, updatedAt: serverTimestamp() }),
+    );
+  });
+  it('rejects missing nested fields, malformed maps and required-field deletion', async () => {
+    const ref = doc(env.authenticatedContext('alice').firestore(), 'users/alice/settings/planner');
+    const data = { ...defaultPreferences, dayHours, updatedAt: serverTimestamp() };
+    for (const malformed of [
+      null,
+      [],
+      'hours',
+      { start: 480 },
+      { start: 480, end: 1080, linked: true },
+    ])
+      await assertFails(setDoc(ref, { ...data, dayHours: malformed }));
+    await assertSucceeds(setDoc(ref, data));
+    await assertFails(
+      updateDoc(ref, { 'dayHours.start': deleteField(), updatedAt: serverTimestamp() }),
+    );
+    await assertFails(updateDoc(ref, { weekStart: deleteField(), updatedAt: serverTimestamp() }));
+    await assertSucceeds(
+      updateDoc(ref, { 'dayHours.linked': false, updatedAt: serverTimestamp() }),
+    );
   });
 });

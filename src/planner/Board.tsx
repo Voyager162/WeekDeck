@@ -22,7 +22,7 @@ import {
   blockColor,
   clockLabel,
   dayBlocks,
-  defaultDay,
+  dayConfig,
   minuteAt,
   resizeSlot,
   snapMinute,
@@ -33,10 +33,7 @@ import {
 } from './model';
 import { IconButton, TemplateIcon } from './ui';
 
-export type DragItem =
-  | { kind: 'template'; template: Template }
-  | { kind: 'block'; block: Block }
-  | { kind: 'day'; day: string };
+export type DragItem = { kind: 'template'; template: Template } | { kind: 'block'; block: Block };
 export function Preset({
   template,
   active,
@@ -154,6 +151,7 @@ function ScheduledBlock({
   format,
   disabled,
   onEdit,
+  onDelete,
   onResize,
   onCommit,
 }: {
@@ -163,6 +161,7 @@ function ScheduledBlock({
   format: '12' | '24';
   disabled: boolean;
   onEdit: () => void;
+  onDelete: () => void;
   onResize: (edge: 'start' | 'end', delta: number) => void;
   onCommit: () => void;
 }) {
@@ -196,6 +195,18 @@ function ScheduledBlock({
           {clockLabel(slot.start, format)} - {clockLabel(slot.end, format)}
         </span>
       </button>
+      <IconButton
+        label={`Delete ${block.title}`}
+        className="block-delete"
+        disabled={disabled}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete();
+        }}
+      >
+        <Trash2 size={13} />
+      </IconButton>
       {!disabled && (
         <>
           <Edge
@@ -226,6 +237,7 @@ function DayHeading({
   onSettings,
   onRemove,
   onCopy,
+  onSelect,
 }: {
   day: string;
   config: DayConfig;
@@ -235,40 +247,42 @@ function DayHeading({
   onSettings: () => void;
   onRemove: () => void;
   onCopy: () => void;
+  onSelect: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `day-${day}`,
-    data: { kind: 'day', day } satisfies DragItem,
-    disabled,
-  });
-  const { setNodeRef: dropRef } = useDroppable({ id: `heading-${day}`, data: { day }, disabled });
   const date = new Date(`${day}T12:00:00`),
     today = dateKey(new Date()) === day;
   const total = blocks.reduce((sum, b) => sum + (b.endAt - b.startAt) / 3600000, 0);
   return (
     <div
-      ref={dropRef}
-      className={`day-heading ${selected ? 'selected-day' : ''} ${today ? 'today' : ''} ${isDragging ? 'drag-source' : ''}`}
+      className={`day-heading ${selected ? 'selected-day' : ''} ${today ? 'today' : ''}`}
       data-day-heading={day}
+      onClick={(event) => {
+        if (!disabled && !(event.target as HTMLElement).closest('button')) onSelect();
+      }}
     >
       <div className="day-title">
-        <span>{date.toLocaleDateString([], { weekday: 'short' })}</span>
-        <strong>{date.getDate()}</strong>
         <button
-          className="day-copy-grip icon-button"
-          ref={setNodeRef}
-          {...attributes}
-          {...listeners}
+          className="day-select"
+          aria-label={`Select ${date.toLocaleDateString([], { weekday: 'long' })}`}
+          aria-pressed={selected}
+          disabled={disabled}
+          onClick={onSelect}
+        >
+          <span>{date.toLocaleDateString([], { weekday: 'short' })}</span>
+          <strong>{date.getDate()}</strong>
+        </button>
+        <button
+          className="day-copy-button icon-button"
           onClick={onCopy}
           title="Copy day"
           aria-label={`Copy ${date.toLocaleDateString([], { weekday: 'long' })}`}
           disabled={disabled}
         >
-          <GripVertical size={17} />
+          <Copy size={14} />
         </button>
       </div>
       <div className="day-meta">
-        <span>{total ? `${Number(total.toFixed(1))}h planned` : 'Unplanned'}</span>
+        <span>{total ? `${Number(total.toFixed(1))}h planned` : ''}</span>
         <div>
           <IconButton
             label={`${date.toLocaleDateString([], { weekday: 'long' })} settings`}
@@ -324,10 +338,11 @@ export function Board({
   disabled,
   ghost,
   drag,
-  copyTarget,
+  onSelect,
   onPlace,
   onEdit,
   onBlockSave,
+  onBlockDelete,
   onDaySave,
   onDaySettings,
   onRemove,
@@ -340,10 +355,11 @@ export function Board({
   disabled: boolean;
   ghost: Slot | null;
   drag: DragItem | null;
-  copyTarget: string | null;
+  onSelect: (day: string) => void;
   onPlace: (day: string, minute: number) => void;
   onEdit: (block: Block) => void;
   onBlockSave: (block: Block) => void;
+  onBlockDelete: (block: Block) => void;
   onDaySave: (day: string, config: DayConfig) => void;
   onDaySettings: (day: string) => void;
   onRemove: (day: string) => void;
@@ -383,7 +399,7 @@ export function Board({
     update(null);
   }
   function resizeDay(day: string, edge: 'start' | 'end', delta: number) {
-    const config = data.days[day] ?? defaultDay;
+    const config = dayConfig(data, day);
     const blocks = dayBlocks(data.blocks, day);
     const minEnd = Math.max(config.start + 15, ...blocks.map((b) => minuteAt(b.endAt, day)));
     const maxStart = Math.min(config.end - 15, ...blocks.map((b) => minuteAt(b.startAt, day)));
@@ -420,13 +436,14 @@ export function Board({
               <DayHeading
                 key={day}
                 day={day}
-                config={data.days[day] ?? defaultDay}
+                config={dayConfig(data, day)}
                 blocks={dayBlocks(data.blocks, day)}
                 selected={day === selectedDay}
                 disabled={disabled}
                 onSettings={() => onDaySettings(day)}
                 onRemove={() => onRemove(day)}
                 onCopy={() => onCopy(day)}
+                onSelect={() => onSelect(day)}
               />
             ))}
           </div>
@@ -453,7 +470,7 @@ export function Board({
               const config =
                 preview && 'day' in preview && preview.day === day
                   ? preview.config
-                  : (data.days[day] ?? defaultDay);
+                  : dayConfig(data, day);
               const today = day === dateKey(now);
               return (
                 <Lane
@@ -516,6 +533,7 @@ export function Board({
                         format={timeFormat}
                         disabled={disabled}
                         onEdit={() => onEdit(block)}
+                        onDelete={() => onBlockDelete(block)}
                         onResize={(edge, delta) =>
                           update({
                             block: block.id,
@@ -524,7 +542,7 @@ export function Board({
                               edge,
                               minuteAt(edge === 'start' ? block.startAt : block.endAt, day) +
                                 (delta * 60) / hourHeight,
-                              data.days[day] ?? defaultDay,
+                              dayConfig(data, day),
                               data.blocks,
                               snap,
                             ),
@@ -563,12 +581,6 @@ export function Board({
                       <strong>
                         {clockLabel(ghost.start, timeFormat)} - {clockLabel(ghost.end, timeFormat)}
                       </strong>
-                    </div>
-                  )}
-                  {copyTarget === day && (
-                    <div className="copy-drop">
-                      <Copy size={24} />
-                      <span>Copy here</span>
                     </div>
                   )}
                   {today && (
