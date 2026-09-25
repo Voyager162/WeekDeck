@@ -1,47 +1,23 @@
-# Building the platform apps
+# Platforms
 
-All targets use the same Firebase web configuration at build time. Configure `.env.local` before creating a cloud-connected build. The provisional application identifier is `com.voyager162.timeblocker`; settle its long-term value before registering store apps.
+## Phones and browsers
 
-## Android
+iPhone, iPad, and Android use the shared HTTPS website as a Home Screen web app. No native SDK, Xcode, Android Studio, signing certificate, or store account is required. See [phone setup](PHONE_SETUP.md).
 
-Install Android Studio and the SDK/JDK versions required by the installed Capacitor version. See [Capacitor environment setup](https://capacitorjs.com/docs/getting-started/environment-setup).
+Run `npm ci`, `npm run assets`, and `npm run dev` for development. `npm run build` produces the Firebase Hosting bundle. The service worker caches only a public offline page and icon, not private planner data or an offline-editable application.
 
-```sh
-npm ci
-npm run mobile:sync
-npm run android
-```
+## Windows, macOS, and Linux
 
-In Android Studio, allow Gradle sync, select an emulator or connected device, and run the `app` configuration. Store release requires a signing key and a Play Console account. Never commit signing credentials. This repository uses the Firebase JS client; it does not require `google-services.json` for the current features.
+Run `npm run desktop` to build and launch Electron. `npm run assets` prepares icons and notices; `npm run desktop:pack` creates an unpacked build; `npm run desktop:dist` creates an installer for the current OS.
 
-## iPhone / iPad
+The desktop app retains its existing identifier, `com.voyager162.timeblocker`, to avoid changing installed application identity. Beta downloads use Windows NSIS, macOS DMG, and Linux AppImage. Windows is unsigned; macOS is ad-hoc signed and unnotarized. Operating-system warnings may appear. Do not disable security globally. There is no automatic updater.
 
-Use a Mac with the required Xcode and iOS SDK. Windows cannot build an iPhone app. Run:
+Electron does not receive Web Push itself. Current builds can refresh the server's phone reminder queue while editing. Older beta desktop builds predate this integration; use the current website to update reminders until a new desktop release is installed.
 
-```sh
-npm ci
-npm run mobile:sync
-npm run ios
-```
+## Builds and tests
 
-In Xcode choose the app's signing team and a simulator/device. Native dependency resolution may run when opening/syncing the project. App Store distribution requires Apple signing and enrollment. See [Capacitor iOS](https://capacitorjs.com/docs/ios).
+The Release Beta workflow checks the app and reminder backend, then builds Windows x64, macOS arm64/x64, and Linux x64 packages. It no longer builds Android APK/AAB files or iOS archives.
 
-## Windows, macOS, Linux
+Browser tests exercise layouts at 320, 390, 768, and 1440px, CRUD, day-copy boundaries, drag/resize behavior, Home Screen metadata, and offline fallback. Chromium also checks service-worker push rendering. Local Worker integration tests exercise authenticated subscription management, encrypted push, retries, isolation, and deletion.
 
-```sh
-npm ci
-npm run desktop
-npm run desktop:pack
-```
-
-Run `npm run assets` before packaging to generate the app icons and third-party notices. `desktop:pack` produces an unpacked app under `release/`. `npm run desktop:dist` produces the current platform's configured installer: Windows NSIS, macOS DMG, or Linux AppImage. Build and test on the target OS; production macOS signing/notarization requires macOS and Apple credentials. Beta installers are unsigned on Windows and ad-hoc signed (not notarized) on macOS. There is no automatic updater. See [installation](../distribution/INSTALL.md) and [store submission](STORE_SUBMISSION.md).
-
-## Validation boundary
-
-The shared app has browser tests at desktop and phone sizes, and Firebase emulator tests. The manually dispatched **Release Beta** workflow builds Windows, macOS (Apple silicon and Intel), Linux, Android, and an unsigned iOS archive on native runners. It smoke-tests packaged desktop startup/navigation and runs the shared app/security/sync suite before creating a draft release. Check the actual workflow outcome for a given release; the existence of a workflow is not evidence it passed. The unsigned iOS archive and Android AAB are developer preparation artifacts, not installable iPhone or store-upload-ready packages. These checks do not replace physical-device validation.
-
-The weekly board is exercised in Chromium and WebKit at 320, 390, 768 and 1440px widths. A Chromium mobile-emulation test dispatches actual touch gestures to verify long-press drawer dragging and ghost placement. WebKit runs the mouse/form/layout suite; this is not an iPhone-device test. Native local-notification delivery still requires the device checklist in [NOTIFICATIONS.md](NOTIFICATIONS.md).
-
-## Rebuild after changes
-
-Use `npm run mobile:sync` after changing the shared UI or Firebase environment. It updates generated assets inside the native shells. Those generated assets are ignored; another checkout rebuilds them from source. Native plugin changes may require another Android Studio/Xcode dependency sync.
+These checks do not replace real-device locked-screen and background delivery tests. See [notification verification](NOTIFICATIONS.md).

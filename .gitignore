@@ -20,5 +20,6 @@ test-results/
 *.p8
 *.jks
 *.keystore
-android/app/google-services.json
-ios/App/App/GoogleService-Info.plist
+.wrangler/
+.dev.vars*
+notifications/wrangler.local.jsonc

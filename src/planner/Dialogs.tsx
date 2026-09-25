@@ -21,7 +21,7 @@ import {
   type Template,
 } from './model';
 import { IconButton, Modal, TemplateIcon, Toggle } from './ui';
-import { nativeNotifications, type useNotifications } from './notifications';
+import { type useNotifications } from './notifications';
 
 const dayName = (day: string) =>
   new Date(`${day}T12:00:00`).toLocaleDateString([], { weekday: 'long' });
@@ -696,10 +696,11 @@ export function Settings({
                   <strong>This device</strong>
                   <small>{notifications.status}</small>
                 </div>
-                {nativeNotifications && !notifications.enabled && (
+                {notifications.canEnable && !notifications.enabled && (
                   <button
                     type="button"
                     className="secondary"
+                    disabled={notifications.busy}
                     onClick={() =>
                       void notifications
                         .request()
@@ -710,18 +711,35 @@ export function Settings({
                   </button>
                 )}
               </div>
-              {notifications.android && (
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() =>
-                    void notifications
-                      .exact()
-                      .catch(() => setError('Could not open device settings.'))
-                  }
-                >
-                  Exact timing settings
-                </button>
+              {notifications.enabled && (
+                <div className="account-links">
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={notifications.busy}
+                    onClick={() =>
+                      void notifications
+                        .test()
+                        .catch((e) =>
+                          setError(e instanceof Error ? e.message : 'Test could not be sent.'),
+                        )
+                    }
+                  >
+                    Test notification
+                  </button>
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={notifications.busy}
+                    onClick={() =>
+                      void notifications
+                        .disable()
+                        .catch(() => setError('Could not disable notifications.'))
+                    }
+                  >
+                    Disable this device
+                  </button>
+                </div>
               )}
               <Toggle
                 label="Weekly planning reminder"
@@ -815,8 +833,8 @@ export function Settings({
                 </label>
               )}
               <p className="setting-footnote">
-                Device reminders refresh when the app opens. Up to 60 upcoming reminders are
-                scheduled.
+                Reminders need an internet connection. Delivery can be delayed by Focus, battery
+                settings, or network availability.
               </p>
             </>
           )}

@@ -173,6 +173,29 @@ export function fitSlot(
   const end = Math.min(next, start + duration);
   return end - start >= 5 && validClockRange(day, start, end) ? { day, start, end } : null;
 }
+export function resizeSharedBoundary(
+  top: Block,
+  bottom: Block,
+  desired: number,
+  snap: number,
+): [Block, Block] | null {
+  const day = dateKey(new Date(top.startAt));
+  if (
+    top.id === bottom.id ||
+    top.endAt !== bottom.startAt ||
+    dateKey(new Date(bottom.startAt)) !== day ||
+    !Number.isFinite(desired)
+  )
+    return null;
+  const min = top.startAt + 5 * 60000;
+  const max = bottom.endAt - 5 * 60000;
+  if (min > max) return null;
+  const boundary = Math.max(min, Math.min(max, atMinute(day, snapMinute(desired, snap))));
+  return [
+    { ...top, endAt: boundary },
+    { ...bottom, startAt: boundary },
+  ];
+}
 export function resizeSlot(
   block: Block,
   edge: 'start' | 'end',

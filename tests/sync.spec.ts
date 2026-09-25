@@ -10,8 +10,159 @@ async function login(page: Page, email: string, signup = false) {
   await page
     .getByRole('button', { name: signup ? 'Create account' : 'Sign in', exact: true })
     .click();
-  await expect(page.getByRole('region', { name: 'Weekly planner' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Weekly planner' })).toBeVisible({
+    timeout: 20000,
+  });
 }
+
+async function verifiedAccount(email: string) {
+  const root = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1`;
+  const created = await fetch(`${root}/accounts:signUp?key=fake-key`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password: 'Test-password-482!', returnSecureToken: true }),
+  });
+  const account = await created.json();
+  expect(created.ok, JSON.stringify(account)).toBeTruthy();
+  const verified = await fetch(`${root}/accounts:update?key=fake-key`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },
+    body: JSON.stringify({ localId: account.localId, emailVerified: true }),
+  });
+  expect(verified.ok, await verified.text()).toBeTruthy();
+}
+
+test('joint block resize and undo sync both blocks across devices', async ({ browser }) => {
+  test.setTimeout(60000);
+  const first = await browser.newContext(),
+    second = await browser.newContext();
+  try {
+    const a = await first.newPage(),
+      b = await second.newPage();
+    const email = `boundary-${Date.now()}@example.test`;
+    await login(a, email, true);
+    await login(b, email);
+    for (const [title, start, end] of [
+      ['Top', '09:00', '10:00'],
+      ['Bottom', '10:00', '11:00'],
+    ]) {
+      await a.getByRole('button', { name: 'New block', exact: true }).click();
+      await a.getByLabel('Block name').fill(title);
+      await a.getByLabel('Start', { exact: true }).fill(start);
+      await a.getByLabel('End', { exact: true }).fill(end);
+      await a.getByRole('button', { name: 'Save block', exact: true }).click();
+      await expect(a.getByRole('dialog')).toHaveCount(0);
+    }
+    await a
+      .getByRole('button', { name: 'Resize boundary between Top and Bottom', exact: true })
+      .press('ArrowUp');
+    await expect(
+      b.getByRole('button', { name: 'Top, 9 AM to 9:45 AM', exact: true }),
+    ).toBeVisible();
+    await expect(
+      b.getByRole('button', { name: 'Bottom, 9:45 AM to 11 AM', exact: true }),
+    ).toBeVisible();
+    await a.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(b.getByRole('button', { name: 'Top, 9 AM to 10 AM', exact: true })).toBeVisible();
+    await expect(
+      b.getByRole('button', { name: 'Bottom, 10 AM to 11 AM', exact: true }),
+    ).toBeVisible();
+    await a.getByRole('button', { name: 'Redo', exact: true }).click();
+    await b.reload();
+    await expect(
+      b.getByRole('button', { name: 'Top, 9 AM to 9:45 AM', exact: true }),
+    ).toBeVisible();
+    await expect(
+      b.getByRole('button', { name: 'Bottom, 9:45 AM to 11 AM', exact: true }),
+    ).toBeVisible();
+  } finally {
+    await first.close();
+    await second.close();
+  }
+});
+
+test('email sharing accepts, syncs live, stays read-only, and revokes on desktop and phone', async ({
+  browser,
+}) => {
+  test.setTimeout(120000);
+  const owner = await browser.newContext();
+  const recipient = await browser.newContext();
+  try {
+    const senderEmail = `sender-${Date.now()}@example.test`;
+    const recipientEmail = `recipient-${Date.now()}@example.test`;
+    await verifiedAccount(senderEmail);
+    await verifiedAccount(recipientEmail);
+    const a = await owner.newPage(),
+      b = await recipient.newPage();
+    await login(a, senderEmail);
+    await login(b, recipientEmail);
+    await a.getByRole('button', { name: 'New block', exact: true }).click();
+    await a.getByLabel('Block name', { exact: true }).fill('Shared study');
+    await a.getByRole('button', { name: 'Save block', exact: true }).click();
+    await a.getByRole('button', { name: 'Share schedule', exact: true }).click();
+    await a.getByLabel('Recipient email', { exact: true }).fill(recipientEmail.toUpperCase());
+    await a.getByRole('button', { name: 'Send invitation', exact: true }).click();
+    await expect(a.getByRole('status').filter({ hasText: 'Invitation sent.' })).toBeVisible();
+    await expect(b.getByRole('dialog', { name: 'Schedule invitation' })).toContainText(senderEmail);
+    await b.reload();
+    await expect(b.getByRole('dialog', { name: 'Schedule invitation' })).toContainText(senderEmail);
+    await b.getByRole('button', { name: 'Accept', exact: true }).click();
+    const view = b.getByRole('main', { name: 'Shared schedule' });
+    await expect(view.getByText('Shared study', { exact: true })).toBeVisible();
+    await expect(view.getByRole('button', { name: 'Next shared week' })).toBeDisabled();
+    await expect(b.getByRole('button', { name: 'New block', exact: true })).toHaveCount(0);
+    await expect(b.getByRole('button', { name: `Schedule from ${senderEmail}` })).toBeVisible();
+    await b.keyboard.press('Control+v');
+    await expect(b.getByRole('dialog')).toHaveCount(0);
+    await b.screenshot({ path: 'test-results/shared-desktop.png', fullPage: true });
+    await a.getByRole('button', { name: 'Close', exact: true }).click();
+    await a.getByRole('button', { name: /^Shared study,/ }).click();
+    await a.getByLabel('Block name', { exact: true }).fill('Updated shared study');
+    await a.getByRole('button', { name: 'Save block', exact: true }).click();
+    await expect(view.getByText('Updated shared study', { exact: true })).toBeVisible();
+    await b.setViewportSize({ width: 390, height: 844 });
+    const day = new Date().getDate().toString();
+    await b
+      .getByRole('navigation', { name: 'Shared schedule day' })
+      .getByRole('button')
+      .filter({ has: b.locator('strong', { hasText: new RegExp(`^${day}$`) }) })
+      .click();
+    await expect(view.getByText('Updated shared study', { exact: true })).toBeVisible();
+    await b.screenshot({ path: 'test-results/shared-phone.png', fullPage: true });
+    expect(await b.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+    await b.reload();
+    await b.getByRole('button', { name: `Schedule from ${senderEmail}` }).click();
+    await expect(view.getByText('Updated shared study', { exact: true })).toBeVisible();
+    await a.getByRole('button', { name: 'Share schedule', exact: true }).click();
+    await a.getByRole('button', { name: `Stop sharing with ${recipientEmail}` }).click();
+    await expect(view).toHaveCount(0);
+    await expect(b.getByRole('button', { name: `Schedule from ${senderEmail}` })).toHaveCount(0);
+    await a.getByLabel('Recipient email').fill(recipientEmail);
+    await a.getByLabel('Access', { exact: true }).selectOption('all');
+    await a.getByRole('button', { name: 'Send invitation', exact: true }).click();
+    await b.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await b.reload();
+    await expect(b.getByRole('region', { name: 'Weekly planner' })).toBeVisible();
+    await expect(b.getByRole('dialog')).toHaveCount(0);
+    await a.getByLabel('Recipient email').fill(recipientEmail);
+    await a.getByRole('button', { name: 'Send invitation', exact: true }).click();
+    await b.getByRole('button', { name: 'Accept', exact: true }).click();
+    await expect(view.getByRole('button', { name: 'Next shared week' })).toBeEnabled();
+    await view.getByRole('button', { name: 'Next shared week' }).click();
+    await expect(view.getByText('Updated shared study', { exact: true })).toHaveCount(0);
+    await a.getByRole('button', { name: 'Close', exact: true }).click();
+    await a.getByRole('button', { name: 'Next week', exact: true }).click();
+    await a.getByRole('button', { name: 'New block', exact: true }).click();
+    await a.getByLabel('Block name', { exact: true }).fill('Next week shared block');
+    await a.getByRole('button', { name: 'Save block', exact: true }).click();
+    await expect(view.getByText('Next week shared block', { exact: true })).toHaveCount(1);
+    await view.getByRole('button', { name: 'Previous shared week' }).click();
+    await expect(view.locator('.shared-block')).toHaveCount(1);
+  } finally {
+    await owner.close();
+    await recipient.close();
+  }
+});
 
 test('two devices sync a schedule while a different account stays isolated', async ({
   browser,
@@ -47,19 +198,21 @@ test('two devices sync a schedule while a different account stays isolated', asy
     await expect(a.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect(c.locator('html')).toHaveAttribute('data-theme', 'light');
     const dates = weekDates(weekOf(dateKey(new Date())));
-    await a.getByRole('button', { name: 'Planner settings', exact: true }).click();
+    await a.getByRole('button', { name: 'Settings', exact: true }).click();
+    await a.getByRole('tab', { name: 'Planner', exact: true }).click();
     await a.getByRole('switch', { name: 'Shared day hours' }).check();
     await a.getByLabel('Shared start time').fill('08:00');
     await a.getByLabel('Shared end time').fill('18:00');
     await a.getByRole('button', { name: 'Save settings' }).click();
     await expect(b.getByRole('button', { name: `Start hours ${dates[0]}` })).toHaveText('8 AM');
     await expect(c.getByRole('button', { name: `Start hours ${dates[0]}` })).toHaveText('9 AM');
-    await b.getByRole('button', { name: 'Monday settings', exact: true }).click();
-    await b.getByLabel('Start', { exact: true }).fill('08:30');
-    await b.getByRole('button', { name: 'Save hours' }).click();
+    await b.getByRole('button', { name: `Start hours ${dates[0]}` }).press('ArrowDown');
+    await expect(a.getByRole('button', { name: `Start hours ${dates[0]}` })).toHaveText('8:15 AM');
+    await b.getByRole('button', { name: `Start hours ${dates[0]}` }).press('ArrowDown');
     await expect(a.getByRole('button', { name: `Start hours ${dates[0]}` })).toHaveText('8:30 AM');
     await expect(a.getByRole('button', { name: `Start hours ${dates[1]}` })).toHaveText('8 AM');
-    await a.getByRole('button', { name: 'Planner settings', exact: true }).click();
+    await a.getByRole('button', { name: 'Settings', exact: true }).click();
+    await a.getByRole('tab', { name: 'Planner', exact: true }).click();
     await expect(a.getByRole('switch', { name: 'Shared day hours' })).not.toBeChecked();
     await a.getByRole('button', { name: 'Cancel', exact: true }).click();
     await a.getByRole('button', { name: 'Select Monday', exact: true }).click();

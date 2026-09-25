@@ -1,23 +1,17 @@
-## Weekdeck beta by Voyager
+## Weekdeck 0.2.0 by Voyager
 
-- Weekly time blocking with account sync, reusable presets, themes, mobile layouts, and native mobile reminders.
-- Fixed day copying: both start and end hours now copy exactly. Merging refuses to discard existing blocks outside those hours.
-- Shared day hours, direct block deletion, and keyboard day copying.
-- Password-confirmed account deletion across all weeks, with a deletion lock that prevents stale devices from restoring removed data.
+- Weekly time blocking with account sync, reusable presets, themes, responsive layouts, shared day hours, and keyboard day copying.
+- Read-only schedule sharing by verified email, for one week or all weeks, with invitation acceptance and access revocation.
+- Joint resizing of touching blocks, visible block durations including 15-minute blocks, and Ctrl/Command+Z undo and Ctrl/Command+Shift+Z redo.
+- Updated rounded app icons and simplified planner controls.
+- Installable Home Screen web app for iPhone/iPad and Android, replacing native store builds.
+- Optional Cloudflare Free Web Push service for weekly planning and block transitions. **Background phone reminders are not live yet:** Cloudflare setup and physical-device verification are still pending. The app displays the actual setup status.
+- Password-confirmed account deletion with cross-device write protection and reminder cleanup.
 
-### Choose a download
+Desktop downloads: Windows x64, macOS Apple silicon/Intel, and Linux x64. Read INSTALL.md and verify SHA256SUMS.txt. Windows is unsigned; macOS is ad-hoc signed and unnotarized. No automatic updates are configured.
 
-- Windows: `win-x64.exe`
-- Apple silicon Mac: `mac-arm64.dmg`
-- Intel Mac: `mac-x64.dmg`
-- Linux: `linux-x86_64.AppImage`
-- Android preview: `android-preview.apk`
-- iPhone/iPad: not available as an installable download yet. Apple developer enrollment and signing are still required. The web app is available at https://weekdeck-67e4b.web.app.
+Phones use https://weekdeck-67e4b.web.app, added to the Home Screen. No App Store or Google Play membership is required. Existing historical releases are not retroactively changed by this source update.
 
-Read `INSTALL.md` and verify `SHA256SUMS.txt`. Windows is unsigned; macOS is ad-hoc signed but not notarized; Android uses a debug-signed preview identity. These are testing builds, not store-approved production releases. No automatic updates are configured.
+Known limits: no durable offline editing; block reminders refresh a 14-day queue from connected current-version sessions; receiving subscriptions expire after 90 days of inactivity; physical-device push verification is required. See docs/PHONE_SETUP.md and docs/NOTIFICATIONS.md.
 
-Unsigned iOS archive and Android AAB preparation artifacts are available from the corresponding GitHub Actions run for developers, not as end-user downloads. They cannot be submitted as-is without signing and completing the store checklist.
-
-Support: weekdeckdev@gmail.com. Public support and privacy pages are available at https://weekdeck-67e4b.web.app/support and https://weekdeck-67e4b.web.app/privacy.
-
-Known limits: mobile reminders refresh after foregrounding the app, no durable offline editing, physical-device notification checks remain required, and store enrollment/signing are not complete. See the repository's `docs/STORE_SUBMISSION.md` for next steps.
+Support: weekdeckdev@gmail.com. Privacy: https://weekdeck-67e4b.web.app/privacy.

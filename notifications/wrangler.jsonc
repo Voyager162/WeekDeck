@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "weekdeck-reminders",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-25",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "vars": {
+    "FIREBASE_PROJECT_ID": "weekdeck-67e4b",
+    "APP_ORIGIN": "https://weekdeck-67e4b.web.app",
+    "VAPID_SUBJECT": "mailto:weekdeckdev@gmail.com",
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "REMINDERS", "class_name": "ReminderAccount" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ReminderAccount"] }],
+  "observability": { "enabled": false },
+}

@@ -15,6 +15,7 @@ import {
 import type { User } from 'firebase/auth';
 import { firebase } from '../firebase';
 import { dayRange, shiftDate, type Block } from '../domain';
+import { schedulePreferences } from './sharing';
 import {
   defaultPreferences,
   defaultTemplates,
@@ -101,6 +102,12 @@ export function usePlanner(user: User | null, week: string) {
     const prefs = doc(db, ...base, 'settings', 'planner');
     initialization.current ??= runTransaction(db, async (transaction) => {
       const snapshot = await transaction.get(prefs);
+      transaction.set(doc(db, ...base, 'settings', 'shared'), {
+        ...schedulePreferences(
+          snapshot.exists() ? (snapshot.data() as Preferences) : defaultPreferences,
+        ),
+        updatedAt: serverTimestamp(),
+      });
       if (!snapshot.exists()) {
         transaction.set(prefs, { ...defaultPreferences, updatedAt: serverTimestamp() });
         for (const template of defaultTemplates)
@@ -198,6 +205,11 @@ export function usePlanner(user: User | null, week: string) {
       } else {
         const batch = writeBatch(firebase!.db);
         for (const change of changes) {
+          if (change.kind === 'settings')
+            batch.set(doc(firebase!.db, 'users', user.uid, 'settings', 'shared'), {
+              ...schedulePreferences((change.after ?? defaultPreferences) as Preferences),
+              updatedAt: serverTimestamp(),
+            });
           const ref = doc(firebase!.db, 'users', user.uid, change.kind, change.id);
           if (change.after === undefined) batch.delete(ref);
           else {

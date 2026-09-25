@@ -10,6 +10,7 @@ import {
   fitSlot,
   minuteAt,
   resizeSlot,
+  resizeSharedBoundary,
   validSlot,
   validClockRange,
   weekDates,
@@ -18,10 +19,39 @@ import {
 import { captureDay, dayChanges, pasteDays, settingsChanges } from '../src/planner/changes';
 import type { Change } from '../src/planner/store';
 import type { PlannerData } from '../src/planner/model';
-import { notificationPlan } from '../src/planner/notificationPlan';
 
 const day = '2026-09-21';
 const block = (start: number, end: number) => blockFromSlot('Work', 'blue', { day, start, end });
+describe('shared block boundaries', () => {
+  it('moves only the touching boundary, snaps, and preserves block content', () => {
+    const top = { ...block(540, 600), notes: 'Keep these notes' },
+      bottom = block(600, 660);
+    const result = resizeSharedBoundary(top, bottom, 581, 15)!;
+    expect(result[0]).toEqual({ ...top, endAt: atMinute(day, 585) });
+    expect(result[1]).toEqual({ ...bottom, startAt: atMinute(day, 585) });
+    expect(top.endAt).toBe(atMinute(day, 600));
+    expect(resizeSharedBoundary(top, bottom, 630, 15)![0].endAt).toBe(atMinute(day, 630));
+  });
+  it('clamps both blocks to five minutes without changing the outer endpoints', () => {
+    const top = block(540, 600),
+      bottom = block(600, 660);
+    for (const [desired, boundary] of [
+      [0, 545],
+      [1440, 655],
+    ]) {
+      const result = resizeSharedBoundary(top, bottom, desired, 15)!;
+      expect(result[0].startAt).toBe(top.startAt);
+      expect(result[0].endAt).toBe(atMinute(day, boundary));
+      expect(result[1].startAt).toBe(result[0].endAt);
+      expect(result[1].endAt).toBe(bottom.endAt);
+    }
+  });
+  it('rejects gaps, overlaps, and nonfinite input', () => {
+    expect(resizeSharedBoundary(block(540, 600), block(615, 660), 585, 15)).toBeNull();
+    expect(resizeSharedBoundary(block(540, 615), block(600, 660), 585, 15)).toBeNull();
+    expect(resizeSharedBoundary(block(540, 600), block(600, 660), NaN, 15)).toBeNull();
+  });
+});
 function applyChanges(data: PlannerData, changes: Change[]): PlannerData {
   const next = structuredClone(data);
   for (const change of changes) {
@@ -238,90 +268,5 @@ describe('weekly scheduling', () => {
       if (previous === undefined) delete process.env.TZ;
       else process.env.TZ = previous;
     }
-  });
-});
-describe('device reminder schedule', () => {
-  const now = atMinute(day, 0);
-  it('does not schedule disabled reminders', () => {
-    expect(notificationPlan([block(540, 600)], defaultPreferences.notifications, now)).toEqual([]);
-  });
-  it('repeats weekly at a single chosen time', () => {
-    const plan = notificationPlan(
-      [],
-      { ...defaultPreferences.notifications, planning: true, day: 1, time: 600 },
-      now,
-    );
-    expect(plan.map((p) => p.at)).toEqual([atMinute(day, 600)]);
-    expect(plan[0].repeat).toEqual({ weekday: 2, hour: 10, minute: 0 });
-  });
-  it('advanced reminders include the start and each interval through the end', () => {
-    const plan = notificationPlan(
-      [],
-      {
-        ...defaultPreferences.notifications,
-        planning: true,
-        day: 1,
-        advanced: true,
-        time: 600,
-        end: 660,
-        interval: 30,
-      },
-      now,
-    );
-    expect(plan.slice(0, 3).map((p) => p.at)).toEqual([600, 630, 660].map((m) => atMinute(day, m)));
-    expect(plan).toHaveLength(3);
-  });
-  it('does not send past reminders and does not double-alert contiguous blocks', () => {
-    const plan = notificationPlan(
-      [block(540, 600), block(600, 660)],
-      { ...defaultPreferences.notifications, transitions: true },
-      atMinute(day, 570),
-    );
-    expect(plan.map((p) => p.at)).toEqual([atMinute(day, 600), atMinute(day, 660)]);
-  });
-  it('honors advance reminders and ignores completed blocks', () => {
-    const b = { ...block(660, 720), completed: true };
-    const plan = notificationPlan(
-      [block(540, 600), b],
-      { ...defaultPreferences.notifications, transitions: true, lead: 5 },
-      now,
-    );
-    expect(plan[0].at).toBe(atMinute(day, 535));
-    expect(plan).toHaveLength(2);
-  });
-  it('caps pending reminders below the iOS limit with unique identifiers', () => {
-    const blocks = Array.from({ length: 80 }, (_, i) => block(i * 15, i * 15 + 5));
-    const plan = notificationPlan(
-      blocks,
-      { ...defaultPreferences.notifications, transitions: true },
-      now,
-    );
-    expect(plan).toHaveLength(60);
-    expect(new Set(plan.map((p) => p.id)).size).toBe(60);
-    expect(plan.every((p, i) => i === 0 || p.at >= plan[i - 1].at)).toBe(true);
-  });
-  it('reserves recurring reminders even when the block queue is full', () => {
-    const plan = notificationPlan(
-      Array.from({ length: 80 }, (_, i) => block(i * 15, i * 15 + 5)),
-      {
-        ...defaultPreferences.notifications,
-        transitions: true,
-        planning: true,
-        day: 0,
-        advanced: true,
-      },
-      now,
-    );
-    expect(plan).toHaveLength(60);
-    expect(plan.filter((p) => p.repeat)).toHaveLength(5);
-  });
-  it('rolls elapsed weekly slots into next week', () => {
-    const plan = notificationPlan(
-      [],
-      { ...defaultPreferences.notifications, planning: true, day: 1, time: 600 },
-      atMinute(day, 601),
-    );
-    expect(plan[0].at).toBe(atMinute('2026-09-28', 600));
-    expect(plan[0].repeat?.weekday).toBe(2);
   });
 });

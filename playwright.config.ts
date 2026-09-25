@@ -4,7 +4,7 @@ const port = emulators ? 4174 : 4173;
 export default defineConfig({
   outputDir: emulators ? 'test-results/sync' : 'test-results/browser',
   testDir: './tests',
-  testMatch: emulators ? 'sync.spec.ts' : 'planner.spec.ts',
+  testMatch: emulators ? 'sync.spec.ts' : ['planner.spec.ts', 'pwa.spec.ts'],
   timeout: 30_000,
   use: { baseURL: `http://127.0.0.1:${port}`, trace: 'retain-on-failure' },
   webServer: {
@@ -22,6 +22,7 @@ export default defineConfig({
           VITE_FIREBASE_PROJECT_ID: '',
           VITE_FIREBASE_APP_ID: '',
           VITE_USE_FIREBASE_EMULATORS: 'false',
+          VITE_REMINDER_URL: '',
         },
   },
   projects: [

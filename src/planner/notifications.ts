@@ -1,125 +1,181 @@
 import { useEffect, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
-import { App } from '@capacitor/app';
-import { LocalNotifications } from '@capacitor/local-notifications';
 import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { firebase } from '../firebase';
-import { dateKey, shiftDate, type Block } from '../domain';
-import { atMinute, type Preferences } from './model';
-import { notificationPlan } from './notificationPlan';
+import type { Preferences } from './model';
+import {
+  clearDeviceReminders,
+  deviceSupport,
+  registerWebApp,
+  reminderRequest,
+  reminderService,
+} from '../pwa';
 
-export const nativeNotifications = Capacitor.isNativePlatform();
-let queue = Promise.resolve();
-let generation = 0;
-function enqueue(work: () => Promise<void>) {
-  queue = queue.catch(() => {}).then(work);
-  return queue;
-}
-async function cancelOwned() {
-  const pending = await LocalNotifications.getPending();
-  const notifications = pending.notifications.filter((n) => n.id >= 700_000 && n.id < 700_100);
-  if (notifications.length) await LocalNotifications.cancel({ notifications });
-}
-export function clearNativeReminders() {
-  ++generation;
-  return nativeNotifications ? enqueue(cancelOwned) : Promise.resolve();
-}
 export function useNotifications(
   uid: string | undefined,
-  localBlocks: Block[],
   settings: Preferences['notifications'],
   ready: boolean,
 ) {
-  const [blocks, setBlocks] = useState<Block[]>([]);
-  const [blocksReady, setBlocksReady] = useState(false);
   const [refresh, setRefresh] = useState(0);
-  const [status, setStatus] = useState(
-    nativeNotifications ? 'Not enabled on this device' : 'Available in the iOS and Android apps',
-  );
   const [enabled, setEnabled] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const support = deviceSupport();
+  const [status, setStatus] = useState('');
+  const unavailable = !reminderService
+    ? 'Background reminders are awaiting server setup.'
+    : !uid
+      ? 'Sign in to enable reminders.'
+      : support;
   useEffect(() => {
-    if (!nativeNotifications) return;
-    const listener = App.addListener('appStateChange', (event) => {
-      if (event.isActive) setRefresh((n) => n + 1);
-    });
+    const update = () => {
+      if (document.visibilityState === 'visible') setRefresh((n) => n + 1);
+    };
+    document.addEventListener('visibilitychange', update);
+    window.addEventListener('online', update);
     return () => {
-      void listener.then((handle) => handle.remove());
+      document.removeEventListener('visibilitychange', update);
+      window.removeEventListener('online', update);
     };
   }, []);
   useEffect(() => {
-    if (!uid || !firebase || !nativeNotifications) return;
-    const today = dateKey(new Date());
-    return onSnapshot(
-      query(
-        collection(firebase.db, 'users', uid, 'blocks'),
-        where('startAt', '>=', atMinute(today, 0)),
-        where('startAt', '<', atMinute(shiftDate(today, 14), 0)),
-        orderBy('startAt'),
-      ),
-      (snapshot) => {
-        setBlocks(snapshot.docs.map((d) => ({ ...d.data(), id: d.id }) as Block));
-        setBlocksReady(true);
-      },
-      () => setStatus('Could not refresh reminders'),
-    );
-  }, [uid, refresh]);
-  useEffect(() => {
-    if (!nativeNotifications || !ready || (uid && !blocksReady)) return;
-    const version = ++generation;
-    void enqueue(async () => {
-      if (version !== generation) return;
-      const permission = await LocalNotifications.checkPermissions();
-      setEnabled(permission.display === 'granted');
-      await cancelOwned();
-      if (permission.display !== 'granted') {
-        setStatus('Notifications are off on this device');
+    if (!uid || !reminderService || support) return;
+    let cancelled = false;
+    void (async () => {
+      const worker = await registerWebApp();
+      const subscription = await worker?.pushManager.getSubscription();
+      if (cancelled) return;
+      if (subscription && localStorage.getItem('weekdeck-push-account') !== uid) {
+        await clearDeviceReminders();
         return;
       }
-      const reminders = notificationPlan(uid ? blocks : localBlocks, settings, Date.now());
-      if (Capacitor.getPlatform() === 'android')
-        await LocalNotifications.createChannel({
-          id: 'weekdeck-reminders',
-          name: 'Weekdeck reminders',
-          importance: 4,
+      setEnabled(!!subscription && Notification.permission === 'granted');
+      if (subscription && Notification.permission === 'granted')
+        await reminderRequest('/subscribe', {
+          subscription: subscription.toJSON(),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         });
-      if (reminders.length)
-        await LocalNotifications.schedule({
-          notifications: reminders.map((r) => ({
-            id: r.id,
-            title: r.title,
-            body: r.body,
-            channelId: 'weekdeck-reminders',
-            schedule: r.repeat
-              ? { on: r.repeat, repeats: true, allowWhileIdle: true }
-              : { at: new Date(r.at), allowWhileIdle: true },
-          })),
-        });
-      const blockReminders = reminders.filter((r) => !r.repeat);
-      const last = blockReminders.at(-1);
-      const weekly = reminders.some((r) => r.repeat) ? 'Weekly reminders on. ' : '';
       setStatus(
-        last
-          ? `${weekly}${blockReminders.length} block reminders through ${new Date(last.at).toLocaleDateString([], { month: 'short', day: 'numeric' })}`
-          : weekly || 'No upcoming reminders',
+        Notification.permission === 'denied'
+          ? 'Notifications are blocked in device settings.'
+          : subscription
+            ? 'Enabled on this device'
+            : 'Not enabled on this device',
       );
-    }).catch(() => setStatus('Could not schedule reminders. Check device permissions.'));
-  }, [uid, blocks, localBlocks, settings, refresh, ready, blocksReady]);
-  useEffect(
-    () => () => {
-      // Navigation stops queued work; only sign-out/deletion clears native reminders.
-      ++generation;
-    },
-    [uid],
-  );
+    })().catch(() => {
+      if (!cancelled) setStatus('Could not check this device. Reopen Weekdeck and try again.');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [uid, refresh, support]);
+  useEffect(() => {
+    if (!firebase || !uid || !reminderService || !ready) return;
+    let timer: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+    let attempts = 0;
+    const sync = async () => {
+      try {
+        await reminderRequest('/sync');
+        if (!cancelled) {
+          attempts = 0;
+          setStatus((old) => (old.startsWith('Reminder sync') ? 'Reminders updated' : old));
+        }
+      } catch {
+        if (!cancelled) {
+          setStatus('Reminder sync failed. Your planner is still saved.');
+          if (++attempts <= 3) timer = setTimeout(() => void sync(), attempts * 5000);
+        }
+      }
+    };
+    const now = Date.now();
+    const unsubscribe = onSnapshot(
+      query(
+        collection(firebase.db, 'users', uid, 'blocks'),
+        where('startAt', '>=', now - 86400_000),
+        where('startAt', '<', now + 14 * 86400_000),
+        orderBy('startAt'),
+      ),
+      { includeMetadataChanges: true },
+      (snapshot) => {
+        if (snapshot.metadata.hasPendingWrites || snapshot.metadata.fromCache) return;
+        clearTimeout(timer);
+        timer = setTimeout(() => void sync(), 2000);
+      },
+      () => setStatus('Reminder sync failed. Check your connection.'),
+    );
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [uid, settings, ready, refresh]);
   async function request() {
-    if (nativeNotifications) {
-      await LocalNotifications.requestPermissions();
-      setRefresh((n) => n + 1);
+    if (unavailable) return;
+    setBusy(true);
+    try {
+      // iOS requires the permission call directly inside the user gesture.
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        setStatus('Notifications are blocked in device settings.');
+        return;
+      }
+      const worker = await registerWebApp();
+      if (!worker) throw new Error('Could not install the web app.');
+      const response = await fetch(`${reminderService}/config`, {
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) throw new Error('Reminder service unavailable.');
+      const config = (await response.json()) as { ready: boolean; publicKey: string };
+      if (!config.ready) throw new Error('Background reminders are awaiting server setup.');
+      const key = Uint8Array.from(
+        atob(config.publicKey.replaceAll('-', '+').replaceAll('_', '/')),
+        (c) => c.charCodeAt(0),
+      );
+      const subscription =
+        (await worker.pushManager.getSubscription()) ??
+        (await worker.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }));
+      await reminderRequest('/subscribe', {
+        subscription: subscription.toJSON(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      });
+      localStorage.setItem('weekdeck-push-account', uid!);
+      setEnabled(true);
+      setStatus('Enabled on this device');
+    } catch (error) {
+      await clearDeviceReminders().catch(() => {});
+      setEnabled(false);
+      setStatus(error instanceof Error ? error.message : 'Could not enable notifications.');
+    } finally {
+      setBusy(false);
     }
   }
-  async function exact() {
-    if (Capacitor.getPlatform() === 'android')
-      await LocalNotifications.changeExactNotificationSetting();
+  async function disable() {
+    setBusy(true);
+    try {
+      await clearDeviceReminders(true);
+      setEnabled(false);
+      setStatus('Not enabled on this device');
+    } finally {
+      setBusy(false);
+    }
   }
-  return { status, enabled, request, exact, android: Capacitor.getPlatform() === 'android' };
+  async function test() {
+    setBusy(true);
+    try {
+      const subscription = await (await registerWebApp())?.pushManager.getSubscription();
+      if (!subscription) throw new Error('Enable this device first.');
+      await reminderRequest('/test', { endpoint: subscription.endpoint });
+      setStatus('Test sent. Check your notifications.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return {
+    status: support || unavailable || status,
+    enabled,
+    busy,
+    request,
+    disable,
+    test,
+    canEnable: !unavailable,
+  };
 }

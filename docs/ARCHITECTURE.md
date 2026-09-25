@@ -1,16 +1,16 @@
 # Architecture
 
-## One application, five install targets
+## Shared application
 
-The React/TypeScript client is shared. Capacitor hosts it in native iOS/Android projects; Electron hosts it on desktop. A browser build is also available for fast testing and optional Firebase Hosting. See [Capacitor](https://capacitorjs.com/docs) and [Electron security guidance](https://www.electronjs.org/docs/latest/tutorial/security).
+The React/TypeScript client runs as a Firebase-hosted Home Screen web app on phones and in Electron on Windows, macOS, and Linux. Native mobile shells and store submission builds have been removed. The service worker caches only a public offline page and icon. See [phone setup](PHONE_SETUP.md) and [Electron security guidance](https://www.electronjs.org/docs/latest/tutorial/security).
 
 Firebase Authentication owns credentials. The client never stores or logs passwords. Each signed-in client subscribes to its own Firestore blocks for the selected week, presets, per-date hours, and planner settings. Firestore pushes changes without polling or manual refresh. It is near-realtime while connected, not a guarantee of instant delivery while offline or an app is suspended. No custom HTTP server is needed for this data flow.
 
 ## Server-side enforcement
 
-`firestore.rules` is executable backend policy, not just frontend validation. It rejects anonymous requests, access to another UID's documents, extra fields, invalid time ranges, and forged timestamps. All unlisted paths are denied. Rules deploy separately from the UI; deploying web hosting alone does not update rules.
+`firestore.rules` is executable backend policy, not just frontend validation. It rejects anonymous requests, unauthorized cross-account access, extra fields, invalid time ranges, and forged timestamps. Accepted, verified recipients receive read-only access to explicitly shared weeks. All unlisted paths are denied. Rules deploy separately from the UI; deploying web hosting alone does not update rules. See [sharing authorization and queries](SHARING.md).
 
-Cloud Functions are deliberately not required yet. Add them later for trusted operations such as account cleanup, scheduled jobs, integration secrets, and remote push notifications. Current mobile reminders are scheduled locally with Capacitor. Deploying Functions typically requires the Blaze plan. Never put Admin SDK credentials into this client.
+Cloud Functions are not required. Background reminders use an optional Cloudflare Workers Free service with SQLite-backed Durable Objects and server alarms. Firebase ID tokens authenticate requests; canonical reminder data is read under the user's existing Firestore rules. No passwords, notes, refresh tokens, or service-account keys are stored by the reminder service. See [notification architecture and limits](NOTIFICATIONS.md). Without a configured service URL, the UI clearly reports that background reminders await setup. Never put backend secrets into the client.
 
 ## Storage model
 
@@ -31,7 +31,7 @@ Times represent absolute instants. Each device displays them in its own local ti
 
 The weekly query uses a single-field range/order on `startAt`, with no custom composite index needed. Its 2,500-document cap exceeds the 2,016 nonoverlapping five-minute blocks that fit in a full week. Presets are limited to 30 in the UI (50 in the query). Day configurations query date IDs within the viewed week. Listener changes consume Firestore reads; the app does not subscribe to the whole account's history.
 
-Additional owner-only paths:
+Additional owner-written paths (only day hours have recipient read access):
 
 - `users/{uid}/templates/{id}`: title, palette color, icon enum, duration (15-240 minutes), updatedAt.
 - `users/{uid}/days/{YYYY-MM-DD}`: enabled, start/end wall-clock minutes, optional hoursVersion, updatedAt. Missing dates default to enabled, 9am-5pm until shared hours are set.
@@ -55,6 +55,6 @@ The Electron renderer has Node integration disabled, context isolation and sandb
 
 ## Before a public launch
 
-Account deletion, privacy/support pages, and app branding are included. Deletion reauthenticates the password, writes an immutable `accountDeletions/{uid}` marker, deletes every week's blocks/templates/days plus `settings/planner`, and removes the Auth account. The marker prevents stale devices from recreating deleted records and contains only UID and deletion time; this retention is disclosed. Interrupted cleanup can resume. Account/privacy navigation preserves pending native reminders; sign-out, account changes, and deletion clear them.
+Account deletion, privacy/support pages, and app branding are included. Deletion reauthenticates the password, writes an immutable `accountDeletions/{uid}` marker, deletes the configured reminder service's account data, deletes every week's blocks/templates/days plus `settings/planner`, and removes the Auth account. The marker prevents stale devices from recreating deleted records and contains only UID and deletion time; this retention is disclosed. Interrupted cleanup can resume. Account/privacy navigation preserves server reminders; sign-out unsubscribes the current browser, and deletion clears all account reminders.
 
-Before a broad launch, add data export, email verification, App Check appropriate to each platform, reviewed privacy/terms documents, monitoring and quota alerts, production/staging projects, production-signed native releases, and physical device tests. Current email/password auth avoids OAuth redirect complexity; native social sign-in requires a separate design and platform registration.
+Before a broad launch, add data export, App Check appropriate to each platform, reviewed privacy/terms documents, monitoring and quota alerts, invitation rate limiting, production/staging projects, desktop signing if desired, and physical device tests. Email verification is required for schedule sharing. Account deletion also removes sharing invitations and the separate shared-layout projection. Current email/password auth avoids OAuth redirect complexity. Web Push is best effort, not guaranteed exact delivery.

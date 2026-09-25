@@ -13,7 +13,7 @@ import { WeekPlanner } from './planner/WeekPlanner';
 import { AccountPage } from './AccountPage';
 import { PrivacyPage } from './PrivacyPage';
 import { SupportPage } from './SupportPage';
-import { clearNativeReminders } from './planner/notifications';
+import { clearDeviceReminders } from './pwa';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -35,7 +35,8 @@ export default function App() {
     return onAuthStateChanged(
       firebase.auth,
       (current) => {
-        if (!current || current.uid !== previousUid) void clearNativeReminders().catch(() => {});
+        if (!current || (previousUid && current.uid !== previousUid))
+          void clearDeviceReminders().catch(() => {});
         previousUid = current?.uid;
         setUser(current);
         setLoading(false);
@@ -53,7 +54,7 @@ export default function App() {
       doc(firebase.db, 'accountDeletions', user.uid),
       (snapshot) => {
         setDeleting(snapshot.exists());
-        if (snapshot.exists()) void clearNativeReminders().catch(() => {});
+        if (snapshot.exists()) void clearDeviceReminders().catch(() => {});
       },
       () => setError('Account status could not be checked. Please reconnect and reload.'),
     );

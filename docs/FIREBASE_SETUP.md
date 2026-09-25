@@ -34,7 +34,7 @@ Use **Cloud Firestore**, not the separate product named Realtime Database. Fires
 
 Return to Project overview and choose the **Web (`</>`)** app icon, or **Project settings > General > Your apps > Add app > Web**. Name it `Weekdeck shared client`. Hosting is optional; skip it during registration.
 
-Copy the displayed `firebaseConfig` object. This starter uses the Firebase JavaScript SDK inside the browser, mobile WebViews, and desktop renderer, so a web registration is intentional. Separate native Firebase registrations become necessary if we add native Firebase SDK features later.
+Copy the displayed `firebaseConfig` object. The app uses the Firebase JavaScript SDK inside the browser, phone Home Screen web app, and desktop renderer, so a web registration is intentional. Native Firebase registrations are not needed.
 
 The four values needed now are `apiKey`, `authDomain`, `projectId`, and `appId`. You can send those values to Codex or put them into the local file described below. Firebase's browser configuration is a client identifier, not a privileged server credential. **Do not send Google passwords, service-account JSON, Admin SDK private keys, or signing keys.** Access protection comes from Authentication and Firestore rules.
 
@@ -49,7 +49,7 @@ VITE_FIREBASE_PROJECT_ID=your-project-id
 VITE_FIREBASE_APP_ID=your-web-app-id
 ```
 
-Codex can create this file once you provide the configuration. It is ignored by Git. Values prefixed with `VITE_` are included in the shipped client: never put backend secrets there. Restart the dev server after changing these values. Rebuild and re-sync mobile/desktop apps after configuration changes.
+Codex can create this file once you provide the configuration. It is ignored by Git. Values prefixed with `VITE_` are included in the shipped client: never put backend secrets there. Restart the dev server after changing these values. Rebuild the website and desktop apps after configuration changes.
 
 ## 7. Log in locally and deploy the rules
 
@@ -85,7 +85,7 @@ After Firebase is connected and rules are deployed:
 npm run deploy:web
 ```
 
-Firebase Hosting returns an HTTPS URL. Open that URL on your phone and computer to test syncing before native builds. These commands deploy hosting only when you run them; CI never deploys automatically. Check that `firebase use` shows the intended project before deployment.
+Firebase Hosting returns an HTTPS URL. Open that URL on your phone and computer to use the same planner; add it to the phone's Home Screen using [these steps](PHONE_SETUP.md). These commands deploy hosting only when you run them; CI never deploys automatically. Check that `firebase use` shows the intended project before deployment.
 
 ## Local development without a Firebase account
 

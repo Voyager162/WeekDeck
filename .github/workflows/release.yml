@@ -1,16 +1,17 @@
-name: Release Beta
+name: Release Desktop
 on:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: release-beta
+  group: release-desktop
   cancel-in-progress: false
 env:
   VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
   VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
   VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
   VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+  VITE_REMINDER_URL: ${{ vars.VITE_REMINDER_URL }}
 jobs:
   verify:
     uses: ./.github/workflows/check.yml
@@ -43,12 +44,12 @@ jobs:
       - run: npm run release:check
       - run: npm run assets
       - run: npm run build
-      - name: Package unsigned Windows/Linux beta
+      - name: Package unsigned Windows/Linux app
         if: matrix.platform != 'mac'
         run: npx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - name: Package ad-hoc signed Mac beta (not notarized)
+      - name: Package ad-hoc signed Mac app (not notarized)
         if: matrix.platform == 'mac'
         run: npx electron-builder --mac --${{ matrix.arch }} --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false
       - name: Launch packaged Windows app
@@ -69,82 +70,8 @@ jobs:
             release/*.exe
             release/*.dmg
             release/*.AppImage
-  android:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 35
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - run: npm ci
-      - run: npm run release:check
-      - run: npm run assets -- android
-      - run: npm run build
-      - run: npx cap sync android
-      - run: chmod +x android/gradlew
-      - run: ./gradlew assembleDebug bundleRelease lintRelease --no-daemon
-        working-directory: android
-      - name: Name preview download
-        shell: bash
-        run: |
-          mkdir -p release
-          VERSION=$(node -p "require('./package.json').version")
-          cp android/app/build/outputs/apk/debug/app-debug.apk "release/Weekdeck-${VERSION}-android-preview.apk"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: android-preview
-          path: release/*.apk
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: android-UNSIGNED-store-preparation
-          path: |
-            android/app/build/outputs/bundle/release/*.aab
-            android/app/build/reports/lint-results-release.html
-          if-no-files-found: error
-  ios:
-    runs-on: macos-15
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - name: Select Xcode 26 or newer
-        shell: bash
-        run: |
-          XCODE=$(find /Applications -maxdepth 1 -name 'Xcode_26*.app' | sort | tail -1)
-          test -n "$XCODE"
-          sudo xcode-select -s "$XCODE/Contents/Developer"
-          xcodebuild -version
-          swift --version
-      - run: npm ci
-      - run: npm run release:check
-      - run: npm run assets -- ios
-      - run: npm run build
-      - run: npx cap sync ios
-      - name: Compile unsigned iOS archive
-        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath release/Weekdeck.xcarchive archive CODE_SIGNING_ALLOWED=NO MARKETING_VERSION=0.1.0 CURRENT_PROJECT_VERSION=1
-      - name: Include app privacy manifest in unsigned archive
-        run: |
-          APP=$(find release/Weekdeck.xcarchive/Products/Applications -maxdepth 1 -name '*.app' -print -quit)
-          cp distribution/ios/PrivacyInfo.xcprivacy "$APP/PrivacyInfo.xcprivacy"
-          plutil -lint "$APP/PrivacyInfo.xcprivacy"
-          ditto -c -k --keepParent release/Weekdeck.xcarchive release/Weekdeck-iOS-UNSIGNED.xcarchive.zip
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ios-UNSIGNED-store-preparation
-          path: release/Weekdeck-iOS-UNSIGNED.xcarchive.zip
-          if-no-files-found: error
   draft-release:
-    needs: [verify, desktop, android, ios]
+    needs: [verify, desktop]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -155,11 +82,7 @@ jobs:
           pattern: desktop-*
           merge-multiple: true
           path: downloads
-      - uses: actions/download-artifact@v4
-        with:
-          name: android-preview
-          path: downloads
-      - name: Create checksums and draft prerelease
+      - name: Create checksums and draft release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -172,11 +95,11 @@ jobs:
           TAG="v${VERSION}"
           DRAFT=$(gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null || true)
           if [ "$DRAFT" = "true" ]; then
-            gh release edit "$TAG" --draft --prerelease --target "$GITHUB_SHA" --title "Weekdeck ${VERSION}" --notes-file distribution/RELEASE_NOTES.md
+            gh release edit "$TAG" --draft --prerelease=false --target "$GITHUB_SHA" --title "Weekdeck ${VERSION}" --notes-file distribution/RELEASE_NOTES.md
             gh release upload "$TAG" downloads/* --clobber
           elif [ "$DRAFT" = "false" ]; then
             echo "Refusing to overwrite a published release. Increment the version."
             exit 1
           else
-            gh release create "$TAG" downloads/* --draft --prerelease --target "$GITHUB_SHA" --title "Weekdeck ${VERSION}" --notes-file distribution/RELEASE_NOTES.md
+            gh release create "$TAG" downloads/* --draft --target "$GITHUB_SHA" --title "Weekdeck ${VERSION}" --notes-file distribution/RELEASE_NOTES.md
           fi

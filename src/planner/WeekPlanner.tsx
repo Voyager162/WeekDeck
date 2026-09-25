@@ -19,7 +19,6 @@ import {
   CloudOff,
   Layers2,
   LogOut,
-  PanelLeftClose,
   Plus,
   Redo2,
   Settings2,
@@ -27,7 +26,8 @@ import {
   X,
   UserRound,
 } from 'lucide-react';
-import { signOut, type User } from 'firebase/auth';
+import { type User } from 'firebase/auth';
+import { signOutWithReminders } from '../pwa';
 import { firebase } from '../firebase';
 import { dateKey, shiftDate, type Block } from '../domain';
 import {
@@ -49,13 +49,15 @@ import { usePlanner, type Change } from './store';
 import { captureDay, dayChanges, pasteDays, settingsChanges, type DayClipboard } from './changes';
 import { useNotifications } from './notifications';
 import { Board, Preset, type DragItem } from './Board';
-import { BlockEditor, CopyDialog, DayEditor, Settings, TemplateEditor } from './Dialogs';
+import { BlockEditor, CopyDialog, Settings, TemplateEditor } from './Dialogs';
 import { Brand, IconButton, Modal, TemplateIcon } from './ui';
+import { useSharing } from './sharing';
+import { Sharing } from './SharingPanel';
+import { SharedSchedule } from './SharedSchedule';
 
 type Dialog =
   | { kind: 'block'; slot: Slot; block?: Block; template?: Template }
   | { kind: 'preset'; template?: Template }
-  | { kind: 'day'; day: string }
   | { kind: 'copy'; day: string; target?: string }
   | { kind: 'remove'; day: string }
   | { kind: 'settings'; tab?: string }
@@ -70,6 +72,9 @@ export function WeekPlanner({
   onPrivacy: () => void;
 }) {
   const today = dateKey(new Date());
+  const sharing = useSharing(user);
+  const [sharedId, setSharedId] = useState<string | null>(null);
+  const shared = sharing.incoming.find((s) => s.id === sharedId && s.status === 'accepted');
   const [anchor, setAnchor] = useState(today),
     [weekStart, setWeekStart] = useState<0 | 1>(1);
   const week = weekOf(anchor, weekStart),
@@ -104,22 +109,40 @@ export function WeekPlanner({
   const [drag, setDrag] = useState<DragItem | null>(null),
     [ghost, setGhost] = useState<Slot | null>(null);
   const clipboard = useRef<DayClipboard | null>(null);
+  const daysMenu = useRef<HTMLDetailsElement>(null);
   const [announcement, setAnnouncement] = useState('');
   const dragRef = useRef<DragItem | null>(null),
     ghostRef = useRef<Slot | null>(null),
     point = useRef<{ x: number; y: number } | null>(null);
-  const notifications = useNotifications(
-    user?.uid,
-    data.blocks,
-    data.preferences.notifications,
-    ready,
-  );
+  const notifications = useNotifications(user?.uid, data.preferences.notifications, ready);
   const visible = dates.filter((day) => dayConfig(data, day).enabled);
   const activeDay = visible.includes(selectedDay) ? selectedDay : visible[0];
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
   );
+  useEffect(() => {
+    const dismissOutside = (event: Event) => {
+      const menu = daysMenu.current;
+      if (menu?.open && event.target instanceof Node && !menu.contains(event.target)) {
+        menu.open = false;
+      }
+    };
+    const dismissEscape = (event: KeyboardEvent) => {
+      const menu = daysMenu.current;
+      if (event.key === 'Escape' && menu?.open) {
+        event.preventDefault();
+        menu.open = false;
+        menu.querySelector('summary')?.focus();
+      }
+    };
+    document.addEventListener('pointerdown', dismissOutside, true);
+    document.addEventListener('keydown', dismissEscape);
+    return () => {
+      document.removeEventListener('pointerdown', dismissOutside, true);
+      document.removeEventListener('keydown', dismissEscape);
+    };
+  }, []);
   // Screen coordinates stay stable when a drag scrolls the timeline or closes the drawer.
   useEffect(() => {
     const track = (event: MouseEvent | TouchEvent) => {
@@ -172,20 +195,27 @@ export function WeekPlanner({
     const onKeyDown = (event: KeyboardEvent) => {
       if (
         !(event.ctrlKey || event.metaKey) ||
+        event.defaultPrevented ||
         event.altKey ||
-        event.shiftKey ||
         event.repeat ||
         dialog ||
+        shared ||
         drag ||
         busy ||
         !ready ||
-        !activeDay ||
         (event.target instanceof HTMLElement &&
-          event.target.closest('input, textarea, select, [contenteditable]')) ||
-        window.getSelection()?.toString()
+          event.target.closest('input, textarea, select, [contenteditable]'))
       )
         return;
       const key = event.key.toLowerCase();
+      if (key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          if (store.canRedo) perform(store.redo());
+        } else if (store.canUndo) perform(store.undo());
+        return;
+      }
+      if (event.shiftKey || !activeDay || window.getSelection()?.toString()) return;
       if (key === 'c') {
         event.preventDefault();
         clipboard.current = captureDay(data, activeDay);
@@ -215,10 +245,7 @@ export function WeekPlanner({
       data.blocks,
       data.preferences.snap,
     );
-    if (!slot) {
-      store.setError('There is no free space here. Choose another time.');
-      return;
-    }
+    if (!slot) return;
     if (armed) {
       perform(saveBlock(blockFromSlot(armed.title, armed.color, slot)));
       setArmed(null);
@@ -321,13 +348,6 @@ export function WeekPlanner({
   async function copyDay(source: string, targets: string[], replace: boolean) {
     await commit(pasteDays(data, captureDay(data, source), targets, replace));
   }
-  const plannedMinutes = data.blocks
-    .filter((b) => dates.includes(dateKey(new Date(b.startAt))))
-    .reduce((sum, b) => sum + (b.endAt - b.startAt) / 60000, 0);
-  const totalMinutes = visible.reduce((sum, day) => {
-    const c = dayConfig(data, day);
-    return sum + c.end - c.start;
-  }, 0);
   const weekLabel = `${new Date(`${week}T12:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' })} - ${new Date(`${dates[6]}T12:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}`;
   return (
     <DndContext
@@ -337,7 +357,7 @@ export function WeekPlanner({
       onDragEnd={endDrag}
       onDragCancel={clearDrag}
     >
-      <div className={`app-shell ${library ? 'library-open' : ''}`}>
+      <div className={`app-shell ${library && !shared ? 'library-open' : ''}`}>
         <header className="app-header">
           <Brand />
           <div className="header-right">
@@ -381,7 +401,7 @@ export function WeekPlanner({
             {user && (
               <IconButton
                 label={`Sign out ${user.email}`}
-                onClick={() => perform(signOut(firebase!.auth))}
+                onClick={() => perform(signOutWithReminders())}
               >
                 <LogOut size={18} />
               </IconButton>
@@ -394,30 +414,42 @@ export function WeekPlanner({
         <nav className="icon-rail" aria-label="Workspace">
           <IconButton
             label="Block library"
-            className={library ? 'rail-active' : ''}
-            aria-expanded={library}
+            className={library && !shared ? 'rail-active' : ''}
+            aria-expanded={library && !shared}
             {...libraryControl}
+            onClick={() => {
+              setSharedId(null);
+              if (shared) setLibrary(true);
+              else libraryControl.onClick();
+            }}
           >
             <Layers2 size={21} />
           </IconButton>
           <IconButton
             label="This week"
             onClick={() => {
+              setSharedId(null);
               setAnchor(today);
               setSelectedDay(today);
             }}
           >
             <CalendarDays size={21} />
           </IconButton>
-          <span className="spacer" />
-          <IconButton
-            label="Planner settings"
-            onClick={() => setDialog({ kind: 'settings', tab: 'planner' })}
-          >
-            <Settings2 size={21} />
-          </IconButton>
+          <Sharing
+            user={user}
+            sharing={sharing}
+            week={week}
+            preferences={data.preferences}
+            selected={shared?.id ?? null}
+            allowInvitations={!dialog}
+            ready={ready}
+            onSelect={(id) => {
+              setSharedId(id);
+              setArmed(null);
+            }}
+          />
         </nav>
-        {(library || (drag?.kind === 'template' && innerWidth <= 900)) && (
+        {!shared && (library || (drag?.kind === 'template' && innerWidth <= 900)) && (
           <>
             {library && (
               <button
@@ -429,9 +461,6 @@ export function WeekPlanner({
             <aside className={`library ${!library ? 'drag-hidden' : ''}`} aria-hidden={!library}>
               <header>
                 <h2>Your blocks</h2>
-                <IconButton label="Close block library" onClick={() => setLibrary(false)}>
-                  <PanelLeftClose size={18} />
-                </IconButton>
               </header>
               <div className="library-list">
                 {data.templates.map((template) => (
@@ -456,213 +485,200 @@ export function WeekPlanner({
                   New preset
                 </button>
               </div>
-              <div className="week-summary">
-                <span className="section-caption">THIS WEEK</span>
-                <div>
-                  <strong>
-                    {Number((plannedMinutes / 60).toFixed(1))}
-                    <small>h planned</small>
-                  </strong>
-                  <span>
-                    {totalMinutes ? Math.round((plannedMinutes / totalMinutes) * 100) : 0}%
-                  </span>
-                </div>
-                <div className="summary-track">
-                  <i
-                    style={{
-                      width: `${Math.min(100, (plannedMinutes / (totalMinutes || 1)) * 100)}%`,
-                    }}
-                  />
-                </div>
-                <small>
-                  {data.blocks.filter((b) => dates.includes(dateKey(new Date(b.startAt)))).length}{' '}
-                  blocks <span>/</span> {visible.length} days
-                </small>
-              </div>
             </aside>
           </>
         )}
-        <main className="planner-main">
-          <header className="week-toolbar">
-            <div className="week-heading">
-              <h1>{weekOf(today, weekStart) === week ? 'This week' : 'Your week'}</h1>
-              <div className="week-navigation">
-                <IconButton label="Previous week" onClick={() => moveWeek(-1)}>
-                  <ChevronLeft size={17} />
-                </IconButton>
+        {shared ? (
+          <SharedSchedule key={shared.id} share={shared} onBack={() => setSharedId(null)} />
+        ) : (
+          <main className="planner-main">
+            <header className="week-toolbar">
+              <div className="week-heading">
+                <h1>{weekOf(today, weekStart) === week ? 'This week' : 'Your week'}</h1>
+                <div className="week-navigation">
+                  <IconButton label="Previous week" onClick={() => moveWeek(-1)}>
+                    <ChevronLeft size={17} />
+                  </IconButton>
+                  <button
+                    className="week-date"
+                    onClick={() => {
+                      setAnchor(today);
+                      setSelectedDay(today);
+                    }}
+                    title="Go to this week"
+                  >
+                    {weekLabel}
+                  </button>
+                  <IconButton label="Next week" onClick={() => moveWeek(1)}>
+                    <ChevronRight size={17} />
+                  </IconButton>
+                </div>
+              </div>
+              <div className="toolbar-actions">
+                <div className="history-actions">
+                  <IconButton
+                    label="Undo"
+                    disabled={busy || !store.canUndo}
+                    onClick={() => perform(store.undo())}
+                  >
+                    <Undo2 size={17} />
+                  </IconButton>
+                  <IconButton
+                    label="Redo"
+                    disabled={busy || !store.canRedo}
+                    onClick={() => perform(store.redo())}
+                  >
+                    <Redo2 size={17} />
+                  </IconButton>
+                </div>
+                {visible.length < 7 && (
+                  <details ref={daysMenu} className="hidden-days">
+                    <summary title="Restore days">
+                      <CalendarDays size={17} />
+                      <span>Days</span>
+                    </summary>
+                    <div className="days-menu">
+                      {dates
+                        .filter((d) => !visible.includes(d))
+                        .map((day) => (
+                          <button
+                            key={day}
+                            onClick={() =>
+                              perform(saveDay(day, { ...dayConfig(data, day), enabled: true }))
+                            }
+                          >
+                            <Plus size={14} />
+                            {new Date(`${day}T12:00`).toLocaleDateString([], { weekday: 'long' })}
+                          </button>
+                        ))}
+                    </div>
+                  </details>
+                )}
                 <button
-                  className="week-date"
-                  onClick={() => {
-                    setAnchor(today);
-                    setSelectedDay(today);
-                  }}
-                  title="Go to this week"
+                  className="primary new-block"
+                  aria-label="New block"
+                  title="New block"
+                  disabled={!ready || busy || !activeDay}
+                  onClick={newBlock}
                 >
-                  {weekLabel}
+                  <Plus size={17} />
+                  <span>New block</span>
                 </button>
-                <IconButton label="Next week" onClick={() => moveWeek(1)}>
-                  <ChevronRight size={17} />
+              </div>
+            </header>
+            <nav className="mobile-days" aria-label="Select day">
+              {visible.map((day) => (
+                <button
+                  key={day}
+                  className={activeDay === day ? 'active' : ''}
+                  aria-pressed={activeDay === day}
+                  onClick={() => setSelectedDay(day)}
+                >
+                  <span>
+                    {new Date(`${day}T12:00`)
+                      .toLocaleDateString([], { weekday: 'short' })
+                      .slice(0, 1)}
+                  </span>
+                  <strong>{new Date(`${day}T12:00`).getDate()}</strong>
+                  <i className={dayBlocks(data.blocks, day).length ? 'has-blocks' : ''} />
+                </button>
+              ))}
+            </nav>
+            {error && (
+              <div className="error-banner" role="alert">
+                <span>{error}</span>
+                <IconButton label="Dismiss error" onClick={() => store.setError('')}>
+                  <X size={16} />
                 </IconButton>
               </div>
-            </div>
-            <div className="toolbar-actions">
-              <div className="history-actions">
-                <IconButton
-                  label="Undo"
-                  disabled={busy || !store.canUndo}
-                  onClick={() => perform(store.undo())}
-                >
-                  <Undo2 size={17} />
-                </IconButton>
-                <IconButton
-                  label="Redo"
-                  disabled={busy || !store.canRedo}
-                  onClick={() => perform(store.redo())}
-                >
-                  <Redo2 size={17} />
+            )}
+            {armed && (
+              <div className={`placement-bar color-${armed.color}`}>
+                <TemplateIcon name={armed.icon} />
+                <strong>{armed.title}</strong>
+                <span>{armed.duration} min</span>
+                <IconButton label="Cancel placement" onClick={() => setArmed(null)}>
+                  <X size={16} />
                 </IconButton>
               </div>
-              {visible.length < 7 && (
-                <details className="hidden-days">
-                  <summary title="Restore days">
-                    <CalendarDays size={17} />
-                    <span>Days</span>
-                  </summary>
-                  <div className="days-menu">
-                    {dates
-                      .filter((d) => !visible.includes(d))
-                      .map((day) => (
-                        <button
-                          key={day}
-                          onClick={() =>
-                            perform(saveDay(day, { ...dayConfig(data, day), enabled: true }))
-                          }
-                        >
-                          <Plus size={14} />
-                          {new Date(`${day}T12:00`).toLocaleDateString([], { weekday: 'long' })}
-                        </button>
-                      ))}
-                  </div>
-                </details>
-              )}
-              <button
-                className="primary new-block"
-                aria-label="New block"
-                title="New block"
-                disabled={!ready || busy || !activeDay}
-                onClick={newBlock}
-              >
-                <Plus size={17} />
-                <span>New block</span>
-              </button>
-            </div>
-          </header>
-          <nav className="mobile-days" aria-label="Select day">
-            {visible.map((day) => (
-              <button
-                key={day}
-                className={activeDay === day ? 'active' : ''}
-                aria-pressed={activeDay === day}
-                onClick={() => setSelectedDay(day)}
-              >
-                <span>
-                  {new Date(`${day}T12:00`)
-                    .toLocaleDateString([], { weekday: 'short' })
-                    .slice(0, 1)}
-                </span>
-                <strong>{new Date(`${day}T12:00`).getDate()}</strong>
-                <i className={dayBlocks(data.blocks, day).length ? 'has-blocks' : ''} />
-              </button>
-            ))}
-          </nav>
-          {error && (
-            <div className="error-banner" role="alert">
-              <span>{error}</span>
-              <IconButton label="Dismiss error" onClick={() => store.setError('')}>
-                <X size={16} />
-              </IconButton>
-            </div>
-          )}
-          {armed && (
-            <div className={`placement-bar color-${armed.color}`}>
-              <TemplateIcon name={armed.icon} />
-              <strong>{armed.title}</strong>
-              <span>{armed.duration} min</span>
-              <IconButton label="Cancel placement" onClick={() => setArmed(null)}>
-                <X size={16} />
-              </IconButton>
-            </div>
-          )}
-          {!ready ? (
-            <div className="empty-state" role="status">
-              <span className="loading-ring" />
-              Opening your week...
-            </div>
-          ) : !visible.length ? (
-            <div className="empty-state">
-              <CalendarDays size={34} />
-              <h2>A fresh start.</h2>
-              <button
-                className="secondary"
-                onClick={() =>
-                  perform(
-                    commit(
-                      dayChanges(
-                        data,
-                        Object.fromEntries(
-                          dates.map((day) => [day, { ...dayConfig(data, day), enabled: true }]),
+            )}
+            {!ready ? (
+              <div className="empty-state" role="status">
+                <span className="loading-ring" />
+                Opening your week...
+              </div>
+            ) : !visible.length ? (
+              <div className="empty-state">
+                <CalendarDays size={34} />
+                <h2>A fresh start.</h2>
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    perform(
+                      commit(
+                        dayChanges(
+                          data,
+                          Object.fromEntries(
+                            dates.map((day) => [day, { ...dayConfig(data, day), enabled: true }]),
+                          ),
                         ),
                       ),
+                    )
+                  }
+                >
+                  Restore all days
+                </button>
+              </div>
+            ) : (
+              <Board
+                dates={visible}
+                selectedDay={activeDay}
+                data={data}
+                disabled={busy || !ready}
+                ghost={ghost}
+                drag={drag}
+                onSelect={setSelectedDay}
+                onPlace={place}
+                onEdit={(block) =>
+                  setDialog({
+                    kind: 'block',
+                    block,
+                    slot: {
+                      day: dateKey(new Date(block.startAt)),
+                      start: minuteAt(block.startAt),
+                      end: minuteAt(block.endAt, dateKey(new Date(block.startAt))),
+                    },
+                  })
+                }
+                onBlockSave={(block) => perform(saveBlock(block))}
+                onBlocksSave={(blocks) =>
+                  perform(
+                    commit(
+                      blocks.map((block) => ({
+                        kind: 'blocks',
+                        id: block.id,
+                        before: data.blocks.find((b) => b.id === block.id),
+                        after: block,
+                      })),
                     ),
                   )
                 }
-              >
-                Restore all days
-              </button>
-            </div>
-          ) : (
-            <Board
-              dates={visible}
-              selectedDay={activeDay}
-              data={data}
-              disabled={busy || !ready}
-              ghost={ghost}
-              drag={drag}
-              onSelect={setSelectedDay}
-              onPlace={place}
-              onEdit={(block) =>
-                setDialog({
-                  kind: 'block',
-                  block,
-                  slot: {
-                    day: dateKey(new Date(block.startAt)),
-                    start: minuteAt(block.startAt),
-                    end: minuteAt(block.endAt, dateKey(new Date(block.startAt))),
-                  },
-                })
-              }
-              onBlockSave={(block) => perform(saveBlock(block))}
-              onBlockDelete={(block) => perform(removeBlock(block))}
-              onDaySave={(day, config) => perform(saveDay(day, config))}
-              onDaySettings={(day) => setDialog({ kind: 'day', day })}
-              onRemove={(day) => setDialog({ kind: 'remove', day })}
-              onCopy={(day) => setDialog({ kind: 'copy', day })}
-              onScroll={updateGhost}
-            />
-          )}
-          <footer className="planner-footer">
-            <span className="sr-only" role="status">
-              {announcement}
-            </span>
-            <button {...libraryControl} aria-expanded={library}>
-              <Layers2 size={14} />
-              <span>Block library</span>
-              <ChevronRight size={14} />
-            </button>
-            <span>{Intl.DateTimeFormat().resolvedOptions().timeZone.replaceAll('_', ' ')}</span>
-            <span>{data.preferences.snap} min snap</span>
-          </footer>
-        </main>
+                onBlockDelete={(block) => perform(removeBlock(block))}
+                onDaySave={(day, config) => perform(saveDay(day, config))}
+                onRemove={(day) => setDialog({ kind: 'remove', day })}
+                onCopy={(day) => setDialog({ kind: 'copy', day })}
+                onScroll={updateGhost}
+              />
+            )}
+            <footer className="planner-footer">
+              <span className="sr-only" role="status">
+                {announcement}
+              </span>
+              <span>{Intl.DateTimeFormat().resolvedOptions().timeZone.replaceAll('_', ' ')}</span>
+              <span>{data.preferences.snap} min snap</span>
+            </footer>
+          </main>
+        )}
       </div>
       <DragOverlay dropAnimation={null}>
         {drag && (
@@ -709,15 +725,6 @@ export function WeekPlanner({
           onDelete={(template) =>
             commit([{ kind: 'templates', id: template.id, before: template }])
           }
-          onClose={() => setDialog(null)}
-        />
-      )}
-      {dialog?.kind === 'day' && (
-        <DayEditor
-          day={dialog.day}
-          config={dayConfig(data, dialog.day)}
-          blocks={data.blocks}
-          onSave={(config) => saveDay(dialog.day, config)}
           onClose={() => setDialog(null)}
         />
       )}

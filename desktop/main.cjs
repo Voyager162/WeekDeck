@@ -16,6 +16,7 @@ function createWindow() {
     minWidth: 380,
     minHeight: 600,
     title: 'Weekdeck',
+    icon: path.join(__dirname, '../dist/icons/icon-512.png'),
     backgroundColor: '#f7f8fa',
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true },
   });

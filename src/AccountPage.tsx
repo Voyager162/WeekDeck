@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { signOut, type User } from 'firebase/auth';
+import { type User } from 'firebase/auth';
 import { ArrowLeft, LogOut, Trash2 } from 'lucide-react';
 import { deleteAccount } from './account';
-import { firebase } from './firebase';
+import { signOutWithReminders } from './pwa';
 import { Brand, IconButton } from './planner/ui';
 
 export function AccountPage({
@@ -129,7 +129,7 @@ export function AccountPage({
         <button
           className="secondary"
           disabled={busy}
-          onClick={() => void signOut(firebase!.auth).catch(() => setError('Could not sign out.'))}
+          onClick={() => void signOutWithReminders().catch(() => setError('Could not sign out.'))}
         >
           <LogOut size={17} />
           Sign out

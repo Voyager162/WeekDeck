@@ -7,16 +7,8 @@ import {
   type ReactNode,
 } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
-import {
-  Check,
-  Copy,
-  GripHorizontal,
-  GripVertical,
-  Settings2,
-  Settings as SettingsIcon,
-  Trash2,
-} from 'lucide-react';
-import { dateKey, type Block } from '../domain';
+import { Check, Copy, GripHorizontal, GripVertical, Settings2, Trash2 } from 'lucide-react';
+import { dateKey, durationLabel, type Block } from '../domain';
 import {
   atMinute,
   blockColor,
@@ -25,6 +17,7 @@ import {
   dayConfig,
   minuteAt,
   resizeSlot,
+  resizeSharedBoundary,
   snapMinute,
   type DayConfig,
   type PlannerData,
@@ -89,6 +82,7 @@ function Edge({
   children,
   className = '',
   step,
+  onCancel,
 }: {
   label: string;
   onChange: (delta: number) => void;
@@ -96,6 +90,7 @@ function Edge({
   children?: ReactNode;
   className?: string;
   step: number;
+  onCancel?: () => void;
 }) {
   const origin = useRef<number | null>(null);
   return (
@@ -108,6 +103,7 @@ function Edge({
         e.preventDefault();
         e.stopPropagation();
         origin.current = e.clientY;
+        e.currentTarget.focus({ preventScroll: true });
         e.currentTarget.setPointerCapture(e.pointerId);
       }}
       onPointerMove={(e) => {
@@ -127,11 +123,18 @@ function Edge({
       onPointerCancel={() => {
         if (origin.current !== null) {
           origin.current = null;
-          onCommit();
+          if (onCancel) onCancel();
+          else onCommit();
         }
       }}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
+        if (e.key === 'Escape' && origin.current !== null && onCancel) {
+          e.preventDefault();
+          e.stopPropagation();
+          origin.current = null;
+          onCancel();
+        }
         if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
           e.preventDefault();
           e.stopPropagation();
@@ -154,6 +157,8 @@ function ScheduledBlock({
   onDelete,
   onResize,
   onCommit,
+  touchingStart,
+  touchingEnd,
 }: {
   block: Block;
   slot: Slot;
@@ -164,6 +169,8 @@ function ScheduledBlock({
   onDelete: () => void;
   onResize: (edge: 'start' | 'end', delta: number) => void;
   onCommit: () => void;
+  touchingStart: boolean;
+  touchingEnd: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: block.id,
@@ -171,6 +178,7 @@ function ScheduledBlock({
     disabled,
   });
   const height = ((slot.end - slot.start) * hourHeight) / 60;
+  const duration = durationLabel((slot.end - slot.start) * 60_000);
   return (
     <div
       className={`scheduled-block color-${blockColor(block)} ${isDragging ? 'drag-source' : ''} ${block.completed ? 'completed' : ''} ${height < 46 ? 'compact' : ''} ${height < 72 ? 'short' : ''} ${height < 18 ? 'tiny' : ''}`}
@@ -185,11 +193,14 @@ function ScheduledBlock({
         disabled={disabled}
         onClick={onEdit}
         aria-label={`${block.title}, ${clockLabel(slot.start, format)} to ${clockLabel(slot.end, format)}`}
-        title={`${block.title}, ${clockLabel(slot.start, format)} to ${clockLabel(slot.end, format)}`}
+        title={`${block.title}, ${clockLabel(slot.start, format)} to ${clockLabel(slot.end, format)}, ${duration}`}
       >
-        <span className="block-title">
-          {block.completed && <Check size={13} />}
-          {block.title}
+        <span className="block-heading">
+          <span className="block-title">
+            {block.completed && <Check size={13} />}
+            {block.title}
+          </span>
+          <span className="block-duration">{duration}</span>
         </span>
         <span className="block-time">
           {clockLabel(slot.start, format)} - {clockLabel(slot.end, format)}
@@ -211,14 +222,14 @@ function ScheduledBlock({
         <>
           <Edge
             label={`Resize start of ${block.title}`}
-            className="block-edge start-edge"
+            className={`block-edge start-edge ${touchingStart ? 'touching-start' : ''}`}
             onChange={(d) => onResize('start', d)}
             onCommit={onCommit}
             step={hourHeight / 4}
           />
           <Edge
             label={`Resize end of ${block.title}`}
-            className="block-edge end-edge"
+            className={`block-edge end-edge ${touchingEnd ? 'touching-end' : ''}`}
             onChange={(d) => onResize('end', d)}
             onCommit={onCommit}
             step={hourHeight / 4}
@@ -234,7 +245,6 @@ function DayHeading({
   blocks,
   selected,
   disabled,
-  onSettings,
   onRemove,
   onCopy,
   onSelect,
@@ -244,7 +254,6 @@ function DayHeading({
   blocks: Block[];
   selected: boolean;
   disabled: boolean;
-  onSettings: () => void;
   onRemove: () => void;
   onCopy: () => void;
   onSelect: () => void;
@@ -285,13 +294,6 @@ function DayHeading({
         <span>{total ? `${Number(total.toFixed(1))}h planned` : ''}</span>
         <div>
           <IconButton
-            label={`${date.toLocaleDateString([], { weekday: 'long' })} settings`}
-            disabled={disabled}
-            onClick={onSettings}
-          >
-            <SettingsIcon size={13} />
-          </IconButton>
-          <IconButton
             label={`Remove ${date.toLocaleDateString([], { weekday: 'long' })}`}
             disabled={disabled}
             onClick={onRemove}
@@ -313,11 +315,15 @@ function Lane({
   children,
   onClick,
   selected,
+  onPointerMove,
+  onPointerLeave,
 }: {
   day: string;
   children: ReactNode;
   onClick: (e: PointerEvent | React.MouseEvent<HTMLDivElement>) => void;
   selected: boolean;
+  onPointerMove: (event: PointerEvent<HTMLDivElement>) => void;
+  onPointerLeave: () => void;
 }) {
   const { setNodeRef } = useDroppable({ id: `lane-${day}`, data: { day } });
   return (
@@ -326,6 +332,8 @@ function Lane({
       data-lane={day}
       className={`day-lane ${selected ? 'selected-day' : ''}`}
       onClick={onClick}
+      onPointerMove={onPointerMove}
+      onPointerLeave={onPointerLeave}
     >
       {children}
     </div>
@@ -342,9 +350,9 @@ export function Board({
   onPlace,
   onEdit,
   onBlockSave,
+  onBlocksSave,
   onBlockDelete,
   onDaySave,
-  onDaySettings,
   onRemove,
   onCopy,
   onScroll,
@@ -359,18 +367,22 @@ export function Board({
   onPlace: (day: string, minute: number) => void;
   onEdit: (block: Block) => void;
   onBlockSave: (block: Block) => void;
+  onBlocksSave: (blocks: Block[]) => void;
   onBlockDelete: (block: Block) => void;
   onDaySave: (day: string, config: DayConfig) => void;
-  onDaySettings: (day: string) => void;
   onRemove: (day: string) => void;
   onCopy: (day: string) => void;
   onScroll: () => void;
 }) {
   const { hourHeight, snap, timeFormat } = data.preferences;
+  const [nearBoundary, setNearBoundary] = useState<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null),
     header = useRef<HTMLDivElement>(null);
   const [preview, setPreview] = useState<
-    { block: string; slot: Slot } | { day: string; config: DayConfig } | null
+    | { block: string; slot: Slot }
+    | { day: string; config: DayConfig }
+    | { pair: [Block, Block] }
+    | null
   >(null);
   const latest = useRef(preview);
   const update = (value: typeof preview) => {
@@ -395,6 +407,14 @@ export function Board({
           startAt: atMinute(value.slot.day, value.slot.start),
           endAt: atMinute(value.slot.day, value.slot.end),
         });
+    } else if (value && 'pair' in value) {
+      if (
+        value.pair.some((block) => {
+          const original = data.blocks.find((b) => b.id === block.id);
+          return original && (original.startAt !== block.startAt || original.endAt !== block.endAt);
+        })
+      )
+        onBlocksSave(value.pair);
     } else if (value) onDaySave(value.day, value.config);
     update(null);
   }
@@ -440,7 +460,6 @@ export function Board({
                 blocks={dayBlocks(data.blocks, day)}
                 selected={day === selectedDay}
                 disabled={disabled}
-                onSettings={() => onDaySettings(day)}
                 onRemove={() => onRemove(day)}
                 onCopy={() => onCopy(day)}
                 onSelect={() => onSelect(day)}
@@ -453,6 +472,7 @@ export function Board({
         className="timeline-scroll"
         ref={scroll}
         onScroll={(e) => {
+          setNearBoundary(null);
           if (header.current) header.current.scrollLeft = e.currentTarget.scrollLeft;
           onScroll();
         }}
@@ -467,6 +487,7 @@ export function Board({
           </div>
           <div className="day-lanes">
             {dates.map((day) => {
+              const blocks = dayBlocks(data.blocks, day);
               const config =
                 preview && 'day' in preview && preview.day === day
                   ? preview.config
@@ -477,6 +498,17 @@ export function Board({
                   key={day}
                   day={day}
                   selected={selectedDay === day}
+                  onPointerMove={(event) => {
+                    if (drag || disabled) return;
+                    const y = event.clientY - event.currentTarget.getBoundingClientRect().top;
+                    const top = blocks.find(
+                      (block, index) =>
+                        blocks[index + 1]?.startAt === block.endAt &&
+                        Math.abs(y - (minuteAt(block.endAt, day) * hourHeight) / 60) <= 12,
+                    );
+                    setNearBoundary(top?.id ?? null);
+                  }}
+                  onPointerLeave={() => setNearBoundary(null)}
                   onClick={(e) => {
                     if (disabled || drag || (e.target as HTMLElement).closest('button')) return;
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -515,14 +547,16 @@ export function Board({
                       </Edge>
                     </div>
                   )}
-                  {dayBlocks(data.blocks, day).map((block) => {
+                  {blocks.map((block, index) => {
+                    const paired =
+                      preview && 'pair' in preview && preview.pair.find((b) => b.id === block.id);
                     const slot =
                       preview && 'block' in preview && preview.block === block.id
                         ? preview.slot
                         : {
                             day,
-                            start: minuteAt(block.startAt, day),
-                            end: minuteAt(block.endAt, day),
+                            start: minuteAt(paired ? paired.startAt : block.startAt, day),
+                            end: minuteAt(paired ? paired.endAt : block.endAt, day),
                           };
                     return (
                       <ScheduledBlock
@@ -549,9 +583,46 @@ export function Board({
                           })
                         }
                         onCommit={finish}
+                        touchingStart={blocks[index - 1]?.endAt === block.startAt}
+                        touchingEnd={blocks[index + 1]?.startAt === block.endAt}
                       />
                     );
                   })}
+                  {!disabled &&
+                    !drag &&
+                    (!preview || 'pair' in preview) &&
+                    blocks.slice(0, -1).map((top, index) => {
+                      const bottom = blocks[index + 1];
+                      if (top.endAt !== bottom.startAt) return null;
+                      const active = preview && 'pair' in preview && preview.pair[0].id === top.id;
+                      const boundary = active ? preview.pair[0].endAt : top.endAt;
+                      return (
+                        <div
+                          key={`${top.id}-${bottom.id}`}
+                          className={`shared-edge-position ${active ? 'resizing' : ''} ${nearBoundary === top.id ? 'nearby' : ''}`}
+                          style={{ top: (minuteAt(boundary, day) * hourHeight) / 60 }}
+                        >
+                          <Edge
+                            label={`Resize boundary between ${top.title} and ${bottom.title}`}
+                            className="shared-block-edge"
+                            step={(hourHeight * snap) / 60}
+                            onChange={(delta) => {
+                              const pair = resizeSharedBoundary(
+                                top,
+                                bottom,
+                                minuteAt(top.endAt, day) + (delta * 60) / hourHeight,
+                                snap,
+                              );
+                              if (pair) update({ pair });
+                            }}
+                            onCommit={finish}
+                            onCancel={() => update(null)}
+                          >
+                            <GripHorizontal size={18} />
+                          </Edge>
+                        </div>
+                      );
+                    })}
                   {!disabled && (
                     <div
                       className="day-edge-position"

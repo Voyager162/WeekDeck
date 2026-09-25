@@ -1,9 +1,14 @@
 rules_version = '2';
-// Owner-only users/{uid}: blocks (validated times/content, immutable createdAt),
+// Owner-written users/{uid}: blocks (validated times/content, immutable createdAt),
 // templates (title/color/icon/duration), days (enabled/start/end), settings/planner
 // (appearance, snapping, notifications). All writes require server updatedAt.
 // Optional dayHours: {start,end,linked,version}; days.hoursVersion matches a UUID.
 // Legacy documents may omit these shared-hours fields. No public user documents.
+// scheduleShares/{ownerUid}_{recipientEmail}: verified email invitations with
+// ownerUid/ownerEmail/recipientEmail, bound recipientUid, pending/accepted/declined
+// status, week/all scope, week/endDay dates, startAt/endAt milliseconds, timeZone,
+// server updatedAt. Accepted recipients can read only the authorized schedule.
+// settings/shared projects weekStart/dayHours/timeZone without private preferences.
 service cloud.firestore {
   match /databases/{database}/documents {
     function owner(uid) {
@@ -11,6 +16,70 @@ service cloud.firestore {
     }
     function activeOwner(uid) {
       return owner(uid) && !exists(/databases/$(database)/documents/accountDeletions/$(uid));
+    }
+    // Invitations are private to their sender and verified recipient. Acceptance binds a UID.
+    function verifiedEmail() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function recipient(data) {
+      return verifiedEmail() && data.recipientEmail == request.auth.token.email.lower();
+    }
+    function grant(uid) {
+      return get(/databases/$(database)/documents/scheduleShares/$(uid + '_' + request.auth.token.email.lower())).data;
+    }
+    function sharedWith(uid) {
+      return verifiedEmail()
+        && !exists(/databases/$(database)/documents/accountDeletions/$(uid))
+        && grant(uid).status == 'accepted'
+        && grant(uid).recipientUid == request.auth.uid;
+    }
+    function sharedBlock(uid) {
+      return sharedWith(uid) && (grant(uid).scope == 'all'
+        || (resource.data.startAt >= grant(uid).startAt && resource.data.startAt < grant(uid).endAt));
+    }
+    function sharedDay(uid, day) {
+      return sharedWith(uid) && (grant(uid).scope == 'all'
+        || (day >= grant(uid).week && day < grant(uid).endDay));
+    }
+    function validShare(data, id) {
+      return fields(data, ['ownerUid', 'ownerEmail', 'recipientEmail', 'recipientUid', 'status', 'scope', 'week', 'endDay', 'startAt', 'endAt', 'timeZone', 'updatedAt'])
+        && data.ownerUid is string && data.ownerEmail is string
+        && data.recipientEmail is string && data.recipientEmail.size() <= 254
+        && data.recipientEmail.matches('^[^ /@]+@[^ /@]+[.][^ /@]+$')
+        && data.recipientEmail == data.recipientEmail.lower()
+        && data.recipientEmail != data.ownerEmail
+        && id == data.ownerUid + '_' + data.recipientEmail
+        && data.recipientUid is string && data.recipientUid.size() <= 128
+        && data.status in ['pending', 'accepted', 'declined']
+        && data.scope in ['week', 'all']
+        && data.week is string && data.week.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.endDay is string && data.endDay.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.endDay > data.week
+        && data.startAt is int && data.startAt >= 0 && data.endAt is int
+        && data.endAt - data.startAt >= 601200000 && data.endAt - data.startAt <= 608400000
+        && data.timeZone is string && data.timeZone.size() <= 100
+        && data.updatedAt == request.time;
+    }
+    match /scheduleShares/{id} {
+      allow read: if owner(resource.data.ownerUid) || recipient(resource.data)
+        || (request.auth != null && resource.data.recipientUid == request.auth.uid);
+      allow create: if validShare(request.resource.data, id)
+        && activeOwner(request.resource.data.ownerUid) && verifiedEmail()
+        && request.resource.data.ownerEmail == request.auth.token.email.lower()
+        && request.resource.data.status == 'pending' && request.resource.data.recipientUid == '';
+      allow update: if validShare(request.resource.data, id)
+        && request.resource.data.ownerUid == resource.data.ownerUid
+        && request.resource.data.recipientEmail == resource.data.recipientEmail
+        && ((activeOwner(resource.data.ownerUid) && verifiedEmail()
+          && request.resource.data.ownerEmail == request.auth.token.email.lower()
+          && request.resource.data.status == 'pending' && request.resource.data.recipientUid == '')
+        || (recipient(resource.data) && activeOwner(request.auth.uid)
+          && resource.data.status == 'pending'
+          && request.resource.data.status in ['accepted', 'declined']
+          && request.resource.data.recipientUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'recipientUid', 'updatedAt'])));
+      allow delete: if owner(resource.data.ownerUid) || recipient(resource.data)
+        || (request.auth != null && resource.data.recipientUid == request.auth.uid);
     }
     match /accountDeletions/{uid} {
       allow get: if owner(uid);
@@ -42,7 +111,8 @@ service cloud.firestore {
         && data.createdAt is timestamp && data.updatedAt == request.time;
     }
     match /users/{uid}/blocks/{blockId} {
-      allow read, delete: if owner(uid);
+      allow read: if owner(uid) || sharedBlock(uid);
+      allow delete: if owner(uid);
       allow create: if activeOwner(uid) && validBlock(request.resource.data)
         && request.resource.data.createdAt == request.time;
       allow update: if activeOwner(uid) && validBlock(request.resource.data)
@@ -75,7 +145,8 @@ service cloud.firestore {
         && data.updatedAt == request.time;
     }
     match /users/{uid}/days/{day} {
-      allow read, delete: if owner(uid);
+      allow read: if owner(uid) || sharedDay(uid, day);
+      allow delete: if owner(uid);
       allow create, update: if activeOwner(uid) && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
         && validDay(request.resource.data);
     }
@@ -109,6 +180,17 @@ service cloud.firestore {
     match /users/{uid}/settings/planner {
       allow read: if owner(uid);
       allow create, update: if activeOwner(uid) && validSettings(request.resource.data);
+      allow delete: if owner(uid);
+    }
+    // Only schedule layout is shared; notification and appearance settings stay private.
+    match /users/{uid}/settings/shared {
+      allow read: if owner(uid) || sharedWith(uid);
+      allow create, update: if activeOwner(uid)
+        && fields(request.resource.data, ['weekStart', 'dayHours', 'timeZone', 'updatedAt'])
+        && request.resource.data.weekStart in [0, 1]
+        && (request.resource.data.dayHours == null || validSharedHours(request.resource.data.dayHours))
+        && request.resource.data.timeZone is string && request.resource.data.timeZone.size() <= 100
+        && request.resource.data.updatedAt == request.time;
       allow delete: if owner(uid);
     }
     // All other paths are private until an explicit schema and rule are added.
