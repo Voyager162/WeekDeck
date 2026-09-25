@@ -16,7 +16,7 @@ function Install-And-Expect([string]$Path, [int]$Code) {
 }
 function Get-WeekdeckInstallation {
   $entries = @(Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' |
-    Where-Object DisplayName -eq 'Weekdeck')
+    Where-Object { $_.DisplayName -match '^Weekdeck(?: |$)' })
   if ($entries.Count -ne 1) { throw "Expected one Weekdeck installation, found $($entries.Count)" }
   return $entries[0]
 }
