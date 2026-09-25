@@ -109,7 +109,7 @@ test('account deletion requires the password and removes all weeks across device
     await login(a, email, true);
     await login(b, email);
     const authUrl =
-      'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/projects/demo-timeblocker/accounts';
+      'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/projects/demo-timeblocker/accounts:batchGet';
     const admin = { headers: { Authorization: 'Bearer owner' } };
     const accounts = await request.get(authUrl, admin);
     expect(accounts.ok()).toBe(true);

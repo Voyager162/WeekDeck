@@ -98,4 +98,4 @@ if (process.argv.includes('ios')) {
       splash,
     );
 }
-console.log('Weekdeck icons generated from the app’s existing Lucide brand mark.');
+console.log('Weekdeck icons generated from the existing Lucide brand mark.');
