@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -25,6 +26,7 @@ import {
   type Template,
 } from './model';
 import { IconButton, TemplateIcon } from './ui';
+import { resizeHaptic } from '../native';
 
 export type DragItem = { kind: 'template'; template: Template } | { kind: 'block'; block: Block };
 export function Preset({
@@ -93,13 +95,94 @@ function Edge({
   onCancel?: () => void;
 }) {
   const origin = useRef<number | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const callbacks = useRef({ onChange, onCommit, onCancel });
+  callbacks.current = { onChange, onCommit, onCancel };
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    const node = button.current!;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let start: { x: number; y: number; laneTop: number } | null = null;
+    let active = false;
+    const scroller = node.closest('.timeline-scroll') as HTMLElement | null;
+    const lane = node.closest('[data-lane]') as HTMLElement | null;
+    const reset = () => {
+      clearTimeout(timer);
+      start = null;
+      active = false;
+      setArmed(false);
+    };
+    const begin = (e: TouchEvent) => {
+      if (e.touches.length !== 1) {
+        if (active) callbacks.current.onCancel?.();
+        reset();
+        return;
+      }
+      clearTimeout(timer);
+      const touch = e.touches[0];
+      start = {
+        x: touch.clientX,
+        y: touch.clientY,
+        laneTop: lane?.getBoundingClientRect().top ?? 0,
+      };
+      timer = setTimeout(() => {
+        active = true;
+        setArmed(true);
+        resizeHaptic();
+      }, 400);
+    };
+    const move = (e: TouchEvent) => {
+      if (!start) return;
+      if (e.touches.length !== 1) {
+        if (active) callbacks.current.onCancel?.();
+        reset();
+        return;
+      }
+      const touch = e.touches[0];
+      if (!active) {
+        if (Math.hypot(touch.clientX - start.x, touch.clientY - start.y) > 8) reset();
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      if (scroller) {
+        const rect = scroller.getBoundingClientRect();
+        if (touch.clientY < rect.top + 40) scroller.scrollTop -= 8;
+        if (touch.clientY > rect.bottom - 40) scroller.scrollTop += 8;
+      }
+      callbacks.current.onChange(
+        touch.clientY - start.y - ((lane?.getBoundingClientRect().top ?? 0) - start.laneTop),
+      );
+    };
+    const end = () => {
+      if (active) callbacks.current.onCommit();
+      reset();
+    };
+    const cancel = () => {
+      if (active) callbacks.current.onCancel?.();
+      reset();
+    };
+    node.addEventListener('touchstart', begin, { passive: true });
+    node.addEventListener('touchmove', move, { passive: false });
+    node.addEventListener('touchend', end);
+    node.addEventListener('touchcancel', cancel);
+    return () => {
+      clearTimeout(timer);
+      node.removeEventListener('touchstart', begin);
+      node.removeEventListener('touchmove', move);
+      node.removeEventListener('touchend', end);
+      node.removeEventListener('touchcancel', cancel);
+    };
+  }, []);
   return (
     <button
+      ref={button}
       type="button"
-      className={`edge-handle ${className}`}
+      className={`edge-handle ${className} ${armed ? 'resize-armed' : ''}`}
       aria-label={label}
       title={label}
       onPointerDown={(e) => {
+        if (e.pointerType === 'touch') return;
         e.preventDefault();
         e.stopPropagation();
         origin.current = e.clientY;
@@ -159,6 +242,7 @@ function ScheduledBlock({
   onCommit,
   touchingStart,
   touchingEnd,
+  onCancel,
 }: {
   block: Block;
   slot: Slot;
@@ -171,6 +255,7 @@ function ScheduledBlock({
   onCommit: () => void;
   touchingStart: boolean;
   touchingEnd: boolean;
+  onCancel: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: block.id,
@@ -225,6 +310,7 @@ function ScheduledBlock({
             className={`block-edge start-edge ${touchingStart ? 'touching-start' : ''}`}
             onChange={(d) => onResize('start', d)}
             onCommit={onCommit}
+            onCancel={onCancel}
             step={hourHeight / 4}
           />
           <Edge
@@ -232,6 +318,7 @@ function ScheduledBlock({
             className={`block-edge end-edge ${touchingEnd ? 'touching-end' : ''}`}
             onChange={(d) => onResize('end', d)}
             onCommit={onCommit}
+            onCancel={onCancel}
             step={hourHeight / 4}
           />
         </>
@@ -385,6 +472,31 @@ export function Board({
     | null
   >(null);
   const latest = useRef(preview);
+  const [phone, setPhone] = useState(() => matchMedia('(max-width: 600px)').matches);
+  useEffect(() => {
+    const media = matchMedia('(max-width: 600px)');
+    const update = () => setPhone(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  const framedDays = phone ? dates.filter((d) => d === selectedDay) : dates;
+  const ranges = (framedDays.length ? framedDays : dates).map((day) =>
+    preview && 'day' in preview && preview.day === day ? preview.config : dayConfig(data, day),
+  );
+  const rangeStart = Math.max(
+    0,
+    Math.min(...ranges.map((r) => r.start), ranges.length ? 1440 : 540) - 120,
+  );
+  const rangeEnd = Math.min(
+    1440,
+    Math.max(...ranges.map((r) => r.end), ranges.length ? 0 : 1020) + 120,
+  );
+  const previousStart = useRef(rangeStart);
+  useLayoutEffect(() => {
+    if (scroll.current)
+      scroll.current.scrollTop += ((previousStart.current - rangeStart) * hourHeight) / 60;
+    previousStart.current = rangeStart;
+  }, [rangeStart, hourHeight]);
   const update = (value: typeof preview) => {
     latest.current = value;
     setPreview(value);
@@ -395,8 +507,8 @@ export function Board({
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    if (scroll.current) scroll.current.scrollTop = 8 * hourHeight;
-  }, [hourHeight]);
+    if (scroll.current) scroll.current.scrollTop = 0;
+  }, [hourHeight, selectedDay, dates[0]]);
   function finish() {
     const value = latest.current;
     if (value && 'block' in value) {
@@ -477,15 +589,35 @@ export function Board({
           onScroll();
         }}
       >
-        <div className="timeline" style={{ height: 24 * hourHeight }}>
-          <div className="time-axis">
+        <div
+          className="timeline"
+          data-range-start={rangeStart}
+          data-range-end={rangeEnd}
+          style={{ height: ((rangeEnd - rangeStart) * hourHeight) / 60, overflow: 'hidden' }}
+        >
+          <div
+            className="time-axis"
+            style={{
+              transform: `translateY(${(-rangeStart * hourHeight) / 60}px)`,
+              height: 24 * hourHeight,
+            }}
+          >
             {Array.from({ length: 24 }, (_, h) => (
-              <span key={h} style={{ top: h * hourHeight }}>
+              <span
+                key={h}
+                style={{
+                  top: h * hourHeight,
+                  transform: h * 60 === rangeStart ? 'none' : undefined,
+                }}
+              >
                 {clockLabel(h * 60, timeFormat)}
               </span>
             ))}
           </div>
-          <div className="day-lanes">
+          <div
+            className="day-lanes"
+            style={{ top: (-rangeStart * hourHeight) / 60, height: 24 * hourHeight }}
+          >
             {dates.map((day) => {
               const blocks = dayBlocks(data.blocks, day);
               const config =
@@ -540,6 +672,7 @@ export function Board({
                         className="day-boundary"
                         onChange={(d) => resizeDay(day, 'start', d)}
                         onCommit={finish}
+                        onCancel={() => update(null)}
                         step={(hourHeight * snap) / 60}
                       >
                         <GripHorizontal size={14} />
@@ -583,6 +716,7 @@ export function Board({
                           })
                         }
                         onCommit={finish}
+                        onCancel={() => update(null)}
                         touchingStart={blocks[index - 1]?.endAt === block.startAt}
                         touchingEnd={blocks[index + 1]?.startAt === block.endAt}
                       />
@@ -631,6 +765,7 @@ export function Board({
                       <Edge
                         label={`End hours ${day}`}
                         className="day-boundary bottom-boundary"
+                        onCancel={() => update(null)}
                         onChange={(d) => resizeDay(day, 'end', d)}
                         onCommit={finish}
                         step={(hourHeight * snap) / 60}

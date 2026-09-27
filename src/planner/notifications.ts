@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { firebase } from '../firebase';
 import type { Preferences } from './model';
+import { nativeIOS } from '../native';
+import { useNativeNotifications } from './nativeNotifications';
 import {
   clearDeviceReminders,
   deviceSupport,
@@ -12,13 +14,15 @@ import {
 
 export function useNotifications(
   uid: string | undefined,
-  settings: Preferences['notifications'],
+  preferences: Preferences,
   ready: boolean,
 ) {
+  const settings = preferences.notifications;
+  const native = useNativeNotifications(uid, preferences, ready);
   const [refresh, setRefresh] = useState(0);
   const [enabled, setEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
-  const support = deviceSupport();
+  const support = nativeIOS ? 'Native notifications' : deviceSupport();
   const [status, setStatus] = useState('');
   const unavailable = !reminderService
     ? 'Background reminders are awaiting server setup.'
@@ -68,7 +72,7 @@ export function useNotifications(
     };
   }, [uid, refresh, support]);
   useEffect(() => {
-    if (!firebase || !uid || !reminderService || !ready) return;
+    if (nativeIOS || !firebase || !uid || !reminderService || !ready) return;
     let timer: ReturnType<typeof setTimeout>;
     let cancelled = false;
     let attempts = 0;
@@ -169,6 +173,7 @@ export function useNotifications(
       setBusy(false);
     }
   }
+  if (nativeIOS) return native;
   return {
     status: support || unavailable || status,
     enabled,

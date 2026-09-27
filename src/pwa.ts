@@ -1,9 +1,12 @@
 import { signOut } from 'firebase/auth';
 import { firebase } from './firebase';
+import { nativeIOS } from './native';
+import { clearNativeReminders } from './planner/nativeNotifications';
 
 export const reminderService = (import.meta.env.VITE_REMINDER_URL ?? '').replace(/\/$/, '');
 let registration: Promise<ServiceWorkerRegistration> | undefined;
 export function registerWebApp() {
+  if (nativeIOS) return undefined;
   if (!('serviceWorker' in navigator) || !['https:', 'http:'].includes(location.protocol))
     return undefined;
   registration ??= navigator.serviceWorker
@@ -53,6 +56,10 @@ export async function reminderRequest(path: string, body: unknown = {}, method =
   return response.json() as Promise<{ ok: boolean; devices?: number; through?: number }>;
 }
 export async function clearDeviceReminders(remote = false) {
+  if (nativeIOS) {
+    await clearNativeReminders();
+    return;
+  }
   if (!('serviceWorker' in navigator) || !['https:', 'http:'].includes(location.protocol)) return;
   const worker = await navigator.serviceWorker.getRegistration('/');
   const subscription = await worker?.pushManager?.getSubscription();

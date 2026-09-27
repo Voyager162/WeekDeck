@@ -16,6 +16,7 @@ import type { User } from 'firebase/auth';
 import { firebase } from '../firebase';
 import { dayRange, shiftDate, type Block } from '../domain';
 import { schedulePreferences } from './sharing';
+import { deviceTimeZone, displayBlock, storeBlock, validTimeZone } from './calendarTime';
 import {
   defaultPreferences,
   defaultTemplates,
@@ -62,7 +63,9 @@ function apply(data: PlannerData, changes: Change[]): PlannerData {
 export function usePlanner(user: User | null, week: string) {
   const [data, setData] = useState<PlannerData>(emptyPlanner);
   const current = useRef(data);
-  current.current = data;
+  const zone = data.preferences.timeZone ?? deviceTimeZone();
+  const displayed = { ...data, blocks: data.blocks.map((block) => displayBlock(block, zone)) };
+  current.current = displayed;
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -78,6 +81,9 @@ export function usePlanner(user: User | null, week: string) {
       const initial = stored ? JSON.parse(stored) : emptyPlanner();
       if (!stored)
         initial.blocks = JSON.parse(localStorage.getItem('timeblocker.preview.v1') || '[]');
+      if (!validTimeZone(initial.preferences.timeZone))
+        initial.preferences.timeZone = deviceTimeZone();
+      localStorage.setItem(localKey, JSON.stringify(initial));
       setData(initial);
       setReady(true);
     } catch {
@@ -102,14 +108,21 @@ export function usePlanner(user: User | null, week: string) {
     const prefs = doc(db, ...base, 'settings', 'planner');
     initialization.current ??= runTransaction(db, async (transaction) => {
       const snapshot = await transaction.get(prefs);
+      const shared = await transaction.get(doc(db, ...base, 'settings', 'shared'));
+      const existing = snapshot.exists() ? (snapshot.data() as Preferences) : defaultPreferences;
+      const timeZone = validTimeZone(existing.timeZone)
+        ? existing.timeZone
+        : validTimeZone(shared.data()?.timeZone)
+          ? shared.data()!.timeZone
+          : deviceTimeZone();
+      const preferences = { ...existing, timeZone };
       transaction.set(doc(db, ...base, 'settings', 'shared'), {
-        ...schedulePreferences(
-          snapshot.exists() ? (snapshot.data() as Preferences) : defaultPreferences,
-        ),
+        ...schedulePreferences(preferences),
         updatedAt: serverTimestamp(),
       });
+      if (!validTimeZone(existing.timeZone))
+        transaction.set(prefs, { ...preferences, updatedAt: serverTimestamp() });
       if (!snapshot.exists()) {
-        transaction.set(prefs, { ...defaultPreferences, updatedAt: serverTimestamp() });
         for (const template of defaultTemplates)
           transaction.set(doc(db, ...base, 'templates', template.id), {
             ...clean(template),
@@ -121,8 +134,8 @@ export function usePlanner(user: User | null, week: string) {
       initialization.current = null;
       fail(error);
     });
-    const start = dayRange(week)[0],
-      end = dayRange(shiftDate(week, 7))[0];
+    const start = dayRange(shiftDate(week, -2))[0],
+      end = dayRange(shiftDate(week, 9))[0];
     const unsubs = [
       onSnapshot(
         query(
@@ -178,7 +191,7 @@ export function usePlanner(user: User | null, week: string) {
         (snapshot) => {
           if (snapshot.exists()) {
             setData((old) => ({ ...old, preferences: clean(snapshot.data()) as Preferences }));
-            mark('prefs');
+            if (snapshot.data().timeZone) mark('prefs');
           }
         },
         fail,
@@ -199,21 +212,35 @@ export function usePlanner(user: User | null, week: string) {
     try {
       if (!user) {
         const next = apply(current.current, changes);
-        localStorage.setItem(localKey, JSON.stringify(next));
+        next.preferences.timeZone ??= zone;
+        const stored = { ...next, blocks: next.blocks.map((block) => storeBlock(block, zone)) };
+        localStorage.setItem(localKey, JSON.stringify(stored));
         current.current = next;
-        setData(next);
+        setData(stored);
       } else {
         const batch = writeBatch(firebase!.db);
         for (const change of changes) {
           if (change.kind === 'settings')
             batch.set(doc(firebase!.db, 'users', user.uid, 'settings', 'shared'), {
-              ...schedulePreferences((change.after ?? defaultPreferences) as Preferences),
+              ...schedulePreferences({
+                ...((change.after ?? defaultPreferences) as Preferences),
+                timeZone: (change.after as Preferences)?.timeZone ?? zone,
+              }),
               updatedAt: serverTimestamp(),
             });
           const ref = doc(firebase!.db, 'users', user.uid, change.kind, change.id);
           if (change.after === undefined) batch.delete(ref);
           else {
-            const next = { ...clean(change.after), updatedAt: serverTimestamp() };
+            const value =
+              change.kind === 'blocks'
+                ? storeBlock(change.after as Block, zone)
+                : change.kind === 'settings'
+                  ? {
+                      ...(change.after as Preferences),
+                      timeZone: (change.after as Preferences).timeZone ?? zone,
+                    }
+                  : change.after;
+            const next = { ...clean(value), updatedAt: serverTimestamp() };
             if (change.kind === 'blocks' && change.before) batch.update(ref, next);
             else
               batch.set(ref, {
@@ -253,7 +280,7 @@ export function usePlanner(user: User | null, week: string) {
     setHistory((old) => [...old, last]);
   }
   return {
-    data,
+    data: displayed,
     ready,
     error,
     setError,

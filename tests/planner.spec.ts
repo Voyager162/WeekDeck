@@ -1,9 +1,179 @@
 import { test, expect, type Page } from '@playwright/test';
 import { dateKey } from '../src/domain';
+import { calendarMidnight } from '../src/planner/calendarTime';
 import { blockFromSlot, emptyPlanner, weekDates, weekOf } from '../src/planner/model';
 
 const week = weekOf(dateKey(new Date()));
 const dates = weekDates(week);
+test('clock times survive travel and edits across time zones', async ({ browser }) => {
+  const data = emptyPlanner();
+  data.preferences.timeZone = 'America/Los_Angeles';
+  data.days[dates[0]] = { enabled: true, start: 960, end: 1305 };
+  data.blocks = [
+    {
+      ...blockFromSlot('Travel plan', 'blue', { day: dates[0], start: 960, end: 1305 }),
+      startAt: calendarMidnight(dates[0], 'America/Los_Angeles') + 960 * 60000,
+      endAt: calendarMidnight(dates[0], 'America/Los_Angeles') + 1305 * 60000,
+    },
+  ];
+  let stored = data;
+  for (const timezoneId of [
+    'America/Los_Angeles',
+    'America/Chicago',
+    'America/New_York',
+    'Asia/Tokyo',
+  ]) {
+    const context = await browser.newContext({
+      timezoneId,
+      viewport: { width: 1440, height: 1000 },
+    });
+    try {
+      const page = await context.newPage();
+      await page.addInitScript((data) => {
+        if (!localStorage.getItem('weekdeck.planner.v2'))
+          localStorage.setItem('weekdeck.planner.v2', JSON.stringify(data));
+      }, stored);
+      await open(page);
+      await expect(
+        page.getByRole('button', { name: 'Travel plan, 4 PM to 9:45 PM', exact: true }),
+      ).toHaveCount(1);
+      await page.getByRole('button', { name: 'Resize end of Travel plan' }).press('ArrowUp');
+      await page.getByRole('button', { name: 'Undo', exact: true }).click();
+      await page.reload();
+      await expect(
+        page.getByRole('button', { name: 'Travel plan, 4 PM to 9:45 PM', exact: true }),
+      ).toHaveCount(1);
+      stored = await page.evaluate(() => JSON.parse(localStorage.getItem('weekdeck.planner.v2')!));
+      expect(stored.blocks[0].startAt).toBe(data.blocks[0].startAt);
+    } finally {
+      await context.close();
+    }
+  }
+});
+test('day framing follows hours with two-hour margins', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page);
+  const lane = page.locator('[data-lane].selected-day');
+  const day = await lane.getAttribute('data-lane');
+  await expect(page.locator('.timeline')).toHaveAttribute('data-range-start', '420');
+  await expect(page.locator('.timeline')).toHaveAttribute('data-range-end', '1140');
+  await page.getByRole('button', { name: `Start hours ${day}` }).press('ArrowUp');
+  await expect(page.locator('.timeline')).toHaveAttribute('data-range-start', '405');
+  await page.getByRole('button', { name: `End hours ${day}` }).press('ArrowDown');
+  await expect(page.locator('.timeline')).toHaveAttribute('data-range-end', '1155');
+  const start = page.getByRole('button', { name: `Start hours ${day}` });
+  await start.scrollIntoViewIfNeeded();
+  const rect = (await start.boundingBox())!;
+  await page.mouse.move(rect.x + 20, rect.y + rect.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rect.x + 20, rect.y + rect.height / 2 - 36, { steps: 4 });
+  await expect(page.locator('.timeline')).toHaveAttribute('data-range-start', '375');
+  await page.mouse.up();
+  await expect(start).toHaveText('8:15 AM');
+});
+
+test('older Pacific schedule can be restored in Austin without rewriting blocks', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ timezoneId: 'America/Chicago' });
+  try {
+    const page = await context.newPage();
+    const data = emptyPlanner();
+    data.days[dates[0]] = { enabled: true, start: 960, end: 1305 };
+    data.blocks = [
+      {
+        ...blockFromSlot('Older plan', 'blue', { day: dates[0], start: 960, end: 1305 }),
+        startAt: calendarMidnight(dates[0], 'America/Los_Angeles') + 960 * 60000,
+        endAt: calendarMidnight(dates[0], 'America/Los_Angeles') + 1305 * 60000,
+      },
+    ];
+    await page.addInitScript((data) => {
+      if (!localStorage.getItem('weekdeck.planner.v2'))
+        localStorage.setItem('weekdeck.planner.v2', JSON.stringify(data));
+    }, data);
+    await open(page);
+    await expect(
+      page.getByRole('button', { name: 'Older plan, 6 PM to 11:45 PM', exact: true }),
+    ).toHaveCount(1);
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('tab', { name: 'Planner', exact: true }).click();
+    await page.getByText('Repair an older schedule', { exact: true }).click();
+    await page.getByLabel('Original schedule time zone').selectOption('America/Los_Angeles');
+    await page.getByRole('button', { name: 'Save settings' }).click();
+    await expect(
+      page.getByRole('button', { name: 'Older plan, 4 PM to 9:45 PM', exact: true }),
+    ).toHaveCount(1);
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Older plan, 6 PM to 11:45 PM', exact: true }),
+    ).toHaveCount(1);
+    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await page.reload();
+    await expect(
+      page.getByRole('button', { name: 'Older plan, 4 PM to 9:45 PM', exact: true }),
+    ).toHaveCount(1);
+    expect(
+      await page.evaluate(
+        () => JSON.parse(localStorage.getItem('weekdeck.planner.v2')!).blocks[0].startAt,
+      ),
+    ).toBe(data.blocks[0].startAt);
+  } finally {
+    await context.close();
+  }
+});
+
+test('phone swipes on timing handles scroll without editing and cancelled holds revert', async ({
+  browser,
+  browserName,
+}) => {
+  test.skip(browserName !== 'chromium', 'CDP touch injection is Chromium-specific.');
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  try {
+    const page = await context.newPage();
+    await open(page);
+    const start = page.locator('[data-lane].selected-day .day-boundary').first();
+    const rect = (await start.boundingBox())!;
+    const x = rect.x + rect.width / 2,
+      y = rect.y + rect.height / 2;
+    const client = await context.newCDPSession(page);
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (let i = 1; i <= 5; i++)
+      await client.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ x, y: y - i * 20 }],
+      });
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(start).toHaveText('9 AM');
+    await expect(start).not.toHaveClass(/resize-armed/);
+    expect(await page.locator('.timeline-scroll').evaluate((el) => el.scrollTop)).toBeGreaterThan(
+      0,
+    );
+    await page.locator('.timeline-scroll').evaluate((el) => (el.scrollTop = 0));
+    await start.scrollIntoViewIfNeeded();
+    const again = (await start.boundingBox())!;
+    const ax = again.x + again.width / 2,
+      ay = again.y + again.height / 2;
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x: ax, y: ay }],
+    });
+    await expect(start).toHaveClass(/resize-armed/);
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: ax, y: ay + 36 }],
+    });
+    await expect(start).toHaveText('9:30 AM');
+    await client.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+    await expect(start).toHaveText('9 AM');
+    await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
+  } finally {
+    await context.close();
+  }
+});
 for (const width of [1440, 768, 390]) {
   test(`block duration stays visible on short blocks at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
@@ -514,6 +684,7 @@ test('shared boundary supports touch dragging', async ({ browser, browserName })
       y = rect.y + rect.height / 2;
     const client = await context.newCDPSession(page);
     await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await expect(handle).toHaveClass(/resize-armed/);
     for (let i = 1; i <= 6; i++)
       await client.send('Input.dispatchTouchEvent', {
         type: 'touchMove',
@@ -723,6 +894,27 @@ test('public support and privacy pages fit narrow and desktop screens', async ({
       true,
     );
   }
+});
+
+test('phone landscape settings and board stay within the screen', async ({ page }) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await open(page, true);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(
+    true,
+  );
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  for (const tab of ['Appearance', 'Planner', 'Notifications']) {
+    await page.getByRole('tab', { name: tab, exact: true }).click();
+    const save = page.getByRole('button', { name: 'Save settings' });
+    await save.scrollIntoViewIfNeeded();
+    const bounds = (await save.boundingBox())!;
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(390);
+    expect(await page.getByRole('dialog').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+      true,
+    );
+  }
+  await page.screenshot({ path: 'test-results/mobile-landscape-settings.png' });
 });
 
 for (const width of [1440, 390])

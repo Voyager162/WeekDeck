@@ -114,7 +114,7 @@ export function WeekPlanner({
   const dragRef = useRef<DragItem | null>(null),
     ghostRef = useRef<Slot | null>(null),
     point = useRef<{ x: number; y: number } | null>(null);
-  const notifications = useNotifications(user?.uid, data.preferences.notifications, ready);
+  const notifications = useNotifications(user?.uid, data.preferences, ready);
   const visible = dates.filter((day) => dayConfig(data, day).enabled);
   const activeDay = visible.includes(selectedDay) ? selectedDay : visible[0];
   const sensors = useSensors(

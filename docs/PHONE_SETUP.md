@@ -21,17 +21,11 @@ Web Push requires iOS/iPadOS 16.4 or newer and a Home Screen web app. No Apple D
 
 Use a current browser that supports Web Push. Device permission is separate from the preferences saved to your account.
 
-## Owner: finish the free service setup
+## Native iPhone app
 
-The Cloudflare account is created, but CLI authorization has not completed. The notification code is prepared; background delivery is not live yet.
+Cloudflare setup was cancelled. Web background reminders are not active. The new iPhone app uses local notifications instead; follow [iPhone App Store setup](IPHONE_APP_STORE.md) to install through TestFlight and publish. That workflow runs on GitHub's Mac, so the owner can manage it from Windows.
 
-The simplest next step is to retry at home:
-
-1. Open this project in Codex.
-2. Ask Codex to retry the Cloudflare connection.
-3. Approve the fresh Cloudflare authorization page within two minutes.
-
-Codex can deploy the service and connect the website after approval. You do not need to paste code into the Cloudflare dashboard, buy a domain, add a card, or share keys. The previous timeout does not establish whether a VPN, Wi-Fi network, browser callback, or expired login caused it. Do not bypass school or workplace security policies.
+After installing the native iPhone app, sign in, open Settings > Notifications, enable this device, and save your reminder preferences. Hold a timing handle until the haptic tick before resizing; swipe normally to scroll. Open the app after edits on other devices to refresh pending block alerts.
 
 Maintainer commands and the verification checklist are in [NOTIFICATIONS.md](NOTIFICATIONS.md).
 

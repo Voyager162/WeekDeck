@@ -32,6 +32,39 @@ async function verifiedAccount(email: string) {
   expect(verified.ok, await verified.text()).toBeTruthy();
 }
 
+test('account calendar keeps clock times across travel and another device', async ({ browser }) => {
+  test.setTimeout(90000);
+  const west = await browser.newContext({ timezoneId: 'America/Los_Angeles' });
+  const east = await browser.newContext({ timezoneId: 'America/Chicago' });
+  try {
+    const a = await west.newPage(),
+      b = await east.newPage();
+    const email = `travel-${Date.now()}@example.test`;
+    await login(a, email, true);
+    await a.getByRole('button', { name: 'New block', exact: true }).click();
+    await a.getByLabel('Block name').fill('Travel block');
+    await a.getByLabel('Start', { exact: true }).fill('16:00');
+    await a.getByLabel('End', { exact: true }).fill('17:00');
+    await a.getByRole('button', { name: 'Save block', exact: true }).click();
+    await expect(a.getByRole('dialog')).toHaveCount(0);
+    await login(b, email);
+    await expect(
+      b.getByRole('button', { name: 'Travel block, 4 PM to 5 PM', exact: true }),
+    ).toHaveCount(1);
+    await b.getByRole('button', { name: 'Resize end of Travel block' }).press('ArrowUp');
+    await expect(
+      a.getByRole('button', { name: 'Travel block, 4 PM to 4:45 PM', exact: true }),
+    ).toHaveCount(1);
+    await b.reload();
+    await expect(
+      b.getByRole('button', { name: 'Travel block, 4 PM to 4:45 PM', exact: true }),
+    ).toHaveCount(1);
+  } finally {
+    await west.close();
+    await east.close();
+  }
+});
+
 test('joint block resize and undo sync both blocks across devices', async ({ browser }) => {
   test.setTimeout(60000);
   const first = await browser.newContext(),

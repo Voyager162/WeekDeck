@@ -3,6 +3,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PanelsTopLeft } from 'lucide-react';
 import sharp from 'sharp';
+import { existsSync } from 'node:fs';
 
 const glyph = renderToStaticMarkup(
   React.createElement(PanelsTopLeft, { size: 20, color: '#ffffff', strokeWidth: 1.7 }),
@@ -23,6 +24,19 @@ for (const size of [180, 192, 512])
     .png()
     .toFile(`public/icons/icon-${size}.png`);
 await sharp(maskable).resize(512).png().toFile('public/icons/icon-maskable-512.png');
+if (existsSync('ios/App/App/Assets.xcassets')) {
+  await sharp(maskable)
+    .removeAlpha()
+    .png()
+    .toFile('ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png');
+  const logo = await sharp(svg).resize(180).png().toBuffer();
+  for (const name of ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png']) {
+    await sharp({ create: { width: 2732, height: 2732, channels: 3, background: '#f7f9f8' } })
+      .composite([{ input: logo, gravity: 'centre' }])
+      .png()
+      .toFile(`ios/App/App/Assets.xcassets/Splash.imageset/${name}`);
+  }
+}
 for (const size of [16, 32, 48, 64, 128, 256, 512, 1024])
   await sharp(svg).resize(size).png().toFile(`build/icons/${size}x${size}.png`);
 const images = [];

@@ -1,6 +1,6 @@
 # Weekdeck
 
-A React + TypeScript time-blocking planner with Firebase account sync. Phones use an installable web app; Windows, macOS, and Linux also have Electron downloads. No App Store or Google Play account is required.
+A React + TypeScript time-blocking planner with Firebase account sync. Browsers and Android use an installable web app; Windows, macOS, and Linux have Electron downloads. An iPhone app is prepared for TestFlight and App Store distribution through GitHub's Mac runners.
 
 [Open Weekdeck](https://weekdeck-67e4b.web.app) | [Phone setup](docs/PHONE_SETUP.md) | [Desktop downloads](https://github.com/Voyager162/WeekDeck/releases)
 
@@ -16,7 +16,7 @@ The web app includes a manifest, Home Screen icons, a service worker, device-spe
 
 Firebase can stay on Spark; the reminder service uses Workers Free and SQLite-backed Durable Objects. No payment method or paid store enrollment is part of this design. Free quotas apply, and delivery is not an exact alarm guarantee. See [notification behavior and deployment](docs/NOTIFICATIONS.md).
 
-Native Android/iOS shells, Capacitor dependencies, store metadata, and store build jobs have been removed. Existing historical GitHub releases are unchanged; use the web app on phones going forward.
+Cloudflare deployment is currently cancelled. The iPhone app instead uses native local notifications, with no reminder server. Remote edits refresh its reminder queue when the iPhone app opens. See [iPhone App Store setup](docs/IPHONE_APP_STORE.md) for Windows-based signing, TestFlight, and the limits of local alerts. No Google Play build is included.
 
 ## Commands
 
@@ -33,6 +33,7 @@ Native Android/iOS shells, Capacitor dependencies, store metadata, and store bui
 | `npm run desktop`               | Build and launch Electron                         |
 | `npm run desktop:dist`          | Build an installer for the current OS             |
 | `npm run deploy:web`            | Build and deploy Firebase Hosting                 |
+| `npm run ios:sync`              | Build and synchronize the native iPhone project   |
 
 Install browsers using `npx playwright install chromium webkit`. Firebase emulators require Java 21+. Tests never target production Firebase. The release workflow builds desktop packages only; it does not deploy Cloudflare or upgrade billing.
 

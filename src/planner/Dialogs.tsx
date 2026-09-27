@@ -22,6 +22,8 @@ import {
 } from './model';
 import { IconButton, Modal, TemplateIcon, Toggle } from './ui';
 import { type useNotifications } from './notifications';
+import { nativeIOS } from '../native';
+import { deviceTimeZone } from './calendarTime';
 
 const dayName = (day: string) =>
   new Date(`${day}T12:00:00`).toLocaleDateString([], { weekday: 'long' });
@@ -686,6 +688,33 @@ export function Settings({
                 <Clock3 size={17} />
                 <span>{Intl.DateTimeFormat().resolvedOptions().timeZone.replaceAll('_', ' ')}</span>
               </div>
+              <details className="calendar-recovery">
+                <summary>Repair an older schedule</summary>
+                <label>
+                  Original schedule time zone
+                  <select
+                    value={draft.timeZone ?? deviceTimeZone()}
+                    onChange={(e) => setDraft({ ...draft, timeZone: e.target.value })}
+                  >
+                    {[
+                      ...new Set([
+                        draft.timeZone ?? deviceTimeZone(),
+                        ...Intl.supportedValuesOf('timeZone'),
+                      ]),
+                    ]
+                      .sort()
+                      .map((zone) => (
+                        <option key={zone} value={zone}>
+                          {zone.replaceAll('_', ' ')}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <p className="muted">
+                  Only for schedules shifted by an older app. Select where you originally planned
+                  them. This changes the displayed times for all weeks.
+                </p>
+              </details>
             </>
           )}
           {tab === 'notifications' && (
@@ -833,8 +862,9 @@ export function Settings({
                 </label>
               )}
               <p className="setting-footnote">
-                Reminders need an internet connection. Delivery can be delayed by Focus, battery
-                settings, or network availability.
+                {nativeIOS
+                  ? 'Reminders refresh when this iPhone syncs. Open Weekdeck after planning on another device. Focus settings can silence alerts.'
+                  : 'Reminders need an internet connection. Delivery can be delayed by Focus, battery settings, or network availability.'}
               </p>
             </>
           )}

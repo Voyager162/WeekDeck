@@ -43,6 +43,20 @@ afterAll(async () => {
 });
 
 describe('private user schedules', () => {
+  it('validates the private account calendar zone', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    const ref = doc(db, 'users/alice/settings/planner');
+    await assertSucceeds(
+      setDoc(ref, {
+        ...defaultPreferences,
+        timeZone: 'America/Los_Angeles',
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    for (const timeZone of ['', 7, 'x'.repeat(101)]) {
+      await assertFails(updateDoc(ref, { timeZone, updatedAt: serverTimestamp() }));
+    }
+  });
   it('allows the owner to create, read, list, update and delete', async () => {
     const db = env.authenticatedContext('alice').firestore();
     const ref = doc(db, 'users/alice/blocks/a');

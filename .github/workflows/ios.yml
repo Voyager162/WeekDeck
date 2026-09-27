@@ -1,0 +1,70 @@
+name: iPhone App Store
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: Sign and upload to TestFlight (requires Apple signing secrets)
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: iphone-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+  VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+  VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+  VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+jobs:
+  iphone:
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: swift --version
+      - run: xcodebuild -version
+      - run: npm ci
+      - run: npm run release:check
+      - run: npm run check
+      - run: npm run ios:sync
+      - name: Build iPhone simulator app
+        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/DerivedData CODE_SIGNING_ALLOWED=NO MARKETING_VERSION=0.3.0 CURRENT_PROJECT_VERSION=${{ github.run_number }} build
+      - name: Launch simulator and capture iPhone screen
+        shell: bash
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const d=Object.values(JSON.parse(s).devices).flat().find(d=>d.name.startsWith("iPhone"));if(!d)process.exit(1);process.stdout.write(d.udid)})')
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" ios/DerivedData/Build/Products/Debug-iphonesimulator/App.app
+          xcrun simctl launch "$DEVICE" com.voyager162.timeblocker
+          sleep 8
+          xcrun simctl io "$DEVICE" screenshot ios/iphone-launch.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iphone-simulator-check
+          path: ios/iphone-launch.png
+      - name: Sign and upload to TestFlight
+        if: github.event_name == 'workflow_dispatch' && inputs.upload
+        env:
+          IOS_TEAM_ID: ${{ vars.IOS_TEAM_ID }}
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROFILE_BASE64: ${{ secrets.IOS_PROFILE_BASE64 }}
+          ASC_KEY_BASE64: ${{ secrets.ASC_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: bash scripts/upload-ios.sh
+      - name: Remove temporary signing material
+        if: always()
+        shell: bash
+        run: |
+          security delete-keychain "$RUNNER_TEMP/weekdeck-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/weekdeck-signing.p12" "$RUNNER_TEMP/weekdeck.mobileprovision" "$RUNNER_TEMP/weekdeck-profile.plist"
+          rm -f "$HOME/.appstoreconnect/private_keys/"AuthKey_*.p8

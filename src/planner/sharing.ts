@@ -12,8 +12,9 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { firebase } from '../firebase';
-import { dayRange, shiftDate } from '../domain';
+import { shiftDate } from '../domain';
 import { type Preferences } from './model';
+import { calendarMidnight, deviceTimeZone } from './calendarTime';
 
 export type ScheduleShare = {
   id: string;
@@ -53,7 +54,7 @@ export function schedulePreferences(preferences: Preferences) {
   return {
     weekStart: preferences.weekStart,
     dayHours: preferences.dayHours ?? null,
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    timeZone: preferences.timeZone ?? deviceTimeZone(),
   };
 }
 export function useSharing(user: User | null) {
@@ -118,9 +119,9 @@ export async function inviteSchedule(
     scope,
     week,
     endDay: shiftDate(week, 7),
-    startAt: dayRange(week)[0],
-    endAt: dayRange(shiftDate(week, 7))[0],
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    startAt: calendarMidnight(week, preferences.timeZone ?? deviceTimeZone()),
+    endAt: calendarMidnight(shiftDate(week, 7), preferences.timeZone ?? deviceTimeZone()),
+    timeZone: preferences.timeZone ?? deviceTimeZone(),
     updatedAt: serverTimestamp(),
   });
   await batch.commit();

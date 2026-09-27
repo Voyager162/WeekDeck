@@ -163,7 +163,8 @@ service cloud.firestore {
     }
     function validSettings(data) {
       return data.keys().hasAll(['theme', 'hourHeight', 'snap', 'timeFormat', 'weekStart', 'notifications', 'updatedAt'])
-        && data.keys().hasOnly(['theme', 'hourHeight', 'snap', 'timeFormat', 'weekStart', 'notifications', 'dayHours', 'updatedAt'])
+        && data.keys().hasOnly(['theme', 'hourHeight', 'snap', 'timeFormat', 'weekStart', 'notifications', 'dayHours', 'timeZone', 'updatedAt'])
+        && (!('timeZone' in data) || (data.timeZone is string && data.timeZone.size() > 0 && data.timeZone.size() <= 100))
         && (!('dayHours' in data) || validSharedHours(data.dayHours))
         && data.theme in ['light', 'dark', 'sage', 'rose', 'system']
         && data.hourHeight is int && data.hourHeight >= 48 && data.hourHeight <= 100

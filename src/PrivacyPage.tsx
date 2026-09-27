@@ -46,13 +46,20 @@ export function PrivacyPage({ onBack, onDelete }: { onBack: () => void; onDelete
         </p>
         <h2>Background reminders</h2>
         <p>
-          When enabled, Cloudflare processes your account identifier, device push subscription,
-          timezone, reminder preferences, and upcoming reminder titles and times. Notes and
-          passwords are not sent to Cloudflare. Your browser's push provider, such as Apple, Google,
-          or Mozilla, delivers encrypted messages. These services may process data outside Los
-          Angeles. Disabling a device or signing out stops its subscription. Inactive subscriptions
-          expire after 90 days without reopening Weekdeck. Deleting your account also removes its
-          reminder data. Provider backups may expire on their own schedules.
+          The iPhone app schedules reminders on your device with Apple's notification system. It
+          does not send reminder data to Cloudflare. Upcoming alerts refresh when the iPhone app
+          connects and syncs. Disabling reminders or signing out clears scheduled alerts on that
+          device. Already scheduled alerts can appear while the app is closed or offline.
+        </p>
+        <p>
+          The optional web push service is not currently deployed. If enabled in a future web
+          version, Cloudflare processes your account identifier, device push subscription, timezone,
+          reminder preferences, and upcoming reminder titles and times. Notes and passwords are not
+          sent to Cloudflare. Your browser's push provider, such as Apple, Google, or Mozilla,
+          delivers encrypted messages. These services may process data outside Los Angeles.
+          Disabling a device or signing out stops its subscription. Inactive subscriptions expire
+          after 90 days without reopening Weekdeck. Deleting your account also removes its reminder
+          data. Provider backups may expire on their own schedules.
         </p>
         <h2>Retention and deletion</h2>
         <p>

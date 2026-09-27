@@ -22,6 +22,7 @@ export type Template = {
 export type DayConfig = { enabled: boolean; start: number; end: number; hoursVersion?: string };
 export type SharedHours = { start: number; end: number; linked: boolean; version: string };
 export type Preferences = {
+  timeZone?: string;
   theme: 'light' | 'dark' | 'sage' | 'rose' | 'system';
   hourHeight: number;
   snap: number;
