@@ -72,6 +72,42 @@ test('day framing follows hours with two-hour margins', async ({ page }) => {
   await expect(start).toHaveText('8:15 AM');
 });
 
+test('an open planner refreshes after the device timezone changes', async ({
+  browser,
+  browserName,
+}) => {
+  test.skip(browserName !== 'chromium', 'Live timezone override uses CDP.');
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    const client = await context.newCDPSession(page);
+    await client.send('Emulation.setTimezoneOverride', { timezoneId: 'America/Los_Angeles' });
+    const data = emptyPlanner();
+    data.preferences.timeZone = 'America/Los_Angeles';
+    data.blocks = [
+      {
+        ...blockFromSlot('Open travel', 'blue', { day: dates[0], start: 960, end: 1020 }),
+        startAt: calendarMidnight(dates[0], 'America/Los_Angeles') + 960 * 60000,
+        endAt: calendarMidnight(dates[0], 'America/Los_Angeles') + 1020 * 60000,
+      },
+    ];
+    await page.addInitScript(
+      (data) => localStorage.setItem('weekdeck.planner.v2', JSON.stringify(data)),
+      data,
+    );
+    await open(page);
+    await page.getByRole('button', { name: 'Resize end of Open travel' }).press('ArrowUp');
+    await client.send('Emulation.setTimezoneOverride', { timezoneId: 'America/Chicago' });
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(
+      page.getByRole('button', { name: 'Open travel, 4 PM to 4:45 PM', exact: true }),
+    ).toHaveCount(1);
+    await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
+  } finally {
+    await context.close();
+  }
+});
+
 test('older Pacific schedule can be restored in Austin without rewriting blocks', async ({
   browser,
 }) => {

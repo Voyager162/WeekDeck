@@ -62,8 +62,9 @@ function apply(data: PlannerData, changes: Change[]): PlannerData {
 }
 export function usePlanner(user: User | null, week: string) {
   const [data, setData] = useState<PlannerData>(emptyPlanner);
+  const [localZone, setLocalZone] = useState(deviceTimeZone);
   const current = useRef(data);
-  const zone = data.preferences.timeZone ?? deviceTimeZone();
+  const zone = data.preferences.timeZone ?? localZone;
   const displayed = { ...data, blocks: data.blocks.map((block) => displayBlock(block, zone)) };
   current.current = displayed;
   const [ready, setReady] = useState(false);
@@ -74,6 +75,22 @@ export function usePlanner(user: User | null, week: string) {
   const [cached, setCached] = useState(!!user);
   const [history, setHistory] = useState<Change[][]>([]);
   const [future, setFuture] = useState<Change[][]>([]);
+  useEffect(() => {
+    const refresh = () => setLocalZone(deviceTimeZone());
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    const timer = setInterval(refresh, 30000);
+    return () => {
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+      clearInterval(timer);
+    };
+  }, []);
+  useEffect(() => {
+    // Undo snapshots contain display-local dates, so don't reuse them after travel.
+    setHistory([]);
+    setFuture([]);
+  }, [localZone]);
   useEffect(() => {
     if (user) return;
     try {
