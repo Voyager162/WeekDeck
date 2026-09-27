@@ -37,11 +37,16 @@ jobs:
       - name: Build iPhone simulator app
         run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/DerivedData CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=16.4 MARKETING_VERSION=0.3.0 CURRENT_PROJECT_VERSION=${{ github.run_number }} build
       - name: Launch simulator and capture iPhone screen
+        if: github.event_name != 'workflow_dispatch' || !inputs.upload
         timeout-minutes: 10
         shell: bash
         run: |
-          DEVICE=$(xcrun simctl list devices available -j | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const d=Object.values(JSON.parse(s).devices).flat().find(d=>d.name.startsWith("iPhone"));if(!d)process.exit(1);process.stdout.write(d.udid)})')
+          RUNTIME=$(xcrun simctl list runtimes available -j | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const all=JSON.parse(s).runtimes.filter(r=>r.isAvailable&&r.identifier.includes("iOS"));const r=all.find(r=>r.identifier.includes("iOS-26"))??all[0];if(!r)process.exit(1);process.stdout.write(r.identifier)})')
+          TYPE=$(xcrun simctl list devicetypes -j | node -e 'let s="";process.stdin.on("data",d=>s+=d);process.stdin.on("end",()=>{const d=JSON.parse(s).devicetypes.find(d=>d.name==="iPhone 16");if(!d)process.exit(1);process.stdout.write(d.identifier)})')
+          DEVICE=$(xcrun simctl create Weekdeck-Check "$TYPE" "$RUNTIME")
+          echo "Booting $DEVICE with $RUNTIME"
           xcrun simctl boot "$DEVICE"
+          open -a Simulator --args -CurrentDeviceUDID "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
           echo "Installing Weekdeck on $DEVICE"
           xcrun simctl install "$DEVICE" ios/DerivedData/Build/Products/Debug-iphonesimulator/App.app
@@ -50,6 +55,7 @@ jobs:
           sleep 8
           xcrun simctl io "$DEVICE" screenshot ios/iphone-launch.png
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'workflow_dispatch' || !inputs.upload
         with:
           name: iphone-simulator-check
           path: ios/iphone-launch.png

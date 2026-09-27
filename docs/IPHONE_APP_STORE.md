@@ -58,7 +58,7 @@ Repeat with the profile and `.p8` file for their corresponding secrets. These va
 ## 4. Build and Install on Your iPhone
 
 1. Open GitHub, Actions, **iPhone App Store**. The normal run builds and launches a simulator app and attaches a screenshot, without signing or submitting anything.
-2. Choose Run workflow, select main, and enable **Sign and upload to TestFlight**. This signs the build on GitHub's Mac and uploads it to Apple. It does not submit the app for public review.
+2. Choose Run workflow, select main, and enable **Sign and upload to TestFlight**. This signs the build on GitHub's Mac and uploads it to Apple. The upload path skips the hosted simulator launch, because TestFlight is the real-device testing path. It does not submit the app for public review.
 3. Wait for the workflow and Apple's processing. In App Store Connect, open Weekdeck, TestFlight. Answer export-compliance questions accurately. Weekdeck uses platform HTTPS encryption; confirm the appropriate exemption for your distribution. The workflow does not make a legal declaration for you.
 4. Add yourself as an internal tester, install Apple's TestFlight app on your iPhone, accept the invitation, and install Weekdeck.
 5. Test account creation/login/deletion, shared schedules, portrait/landscape settings, time-zone travel, short blocks, hold-to-resize with haptics, and lock-screen reminders. Haptics cannot be validated in a simulator.
@@ -78,6 +78,8 @@ Repeat with the profile and `.p8` file for their corresponding secrets. These va
 - Submit for review, choose manual release, and respond to any Apple questions. App Review approval cannot be guaranteed.
 
 ## Reminder and Upgrade Limits
+
+The iPhone code has compiled successfully on hosted Apple Silicon and Intel Macs. Automated simulator startup has timed out, so a successful device launch, native haptics, and locked-screen alerts have not yet been verified. The simulator workflow now uses an explicit iPhone 16/iOS runtime and opens Simulator before installation. Treat the TestFlight checklist above as required, not as completed validation. Signing and upload also remain unverified until the owner's Apple credentials are configured.
 
 Local alerts can fire with the iPhone app closed, without Cloudflare. The app queues up to 60 notifications, reserving room for a test. Repeating weekly reminders continue; block notifications refresh from up to 32 days of data when the iPhone app syncs. Dense schedules exhaust the queue sooner. Open Weekdeck regularly and after editing on a computer. Changes made remotely while the iPhone app stays closed do not update local alerts until it opens. Focus and system settings can silence alerts.
 
