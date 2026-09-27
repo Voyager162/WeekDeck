@@ -593,7 +593,11 @@ export function Board({
           className="timeline"
           data-range-start={rangeStart}
           data-range-end={rangeEnd}
-          style={{ height: ((rangeEnd - rangeStart) * hourHeight) / 60, overflow: 'hidden' }}
+          style={{
+            height: ((rangeEnd - rangeStart) * hourHeight) / 60 + 48,
+            paddingBlock: 24,
+            overflow: 'hidden',
+          }}
         >
           <div
             className="time-axis"

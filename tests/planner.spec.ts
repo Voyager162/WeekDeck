@@ -72,6 +72,31 @@ test('day framing follows hours with two-hour margins', async ({ page }) => {
   await expect(start).toHaveText('8:15 AM');
 });
 
+test('midnight day handles stay inside the framed timeline', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const data = emptyPlanner();
+  for (const day of dates) data.days[day] = { enabled: true, start: 0, end: 1440 };
+  await page.addInitScript(
+    (data) => localStorage.setItem('weekdeck.planner.v2', JSON.stringify(data)),
+    data,
+  );
+  await open(page);
+  const start = page.locator('[data-lane].selected-day .day-boundary').first();
+  const end = page.locator('[data-lane].selected-day .bottom-boundary');
+  for (const handle of [start, end]) {
+    await handle.scrollIntoViewIfNeeded();
+    const bounds = (await handle.boundingBox())!;
+    const frame = (await page.locator('.timeline').boundingBox())!;
+    expect(bounds.y).toBeGreaterThanOrEqual(frame.y);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(frame.y + frame.height);
+    await handle.click();
+  }
+  await end.press('ArrowUp');
+  await expect(end).toHaveText('11:45 PM');
+  await start.press('ArrowDown');
+  await expect(start).toHaveText('12:15 AM');
+});
+
 test('an open planner refreshes after the device timezone changes', async ({
   browser,
   browserName,
