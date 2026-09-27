@@ -1,6 +1,6 @@
 # iPhone App Store Setup (No Personal Mac Required)
 
-Weekdeck's iPhone code lives in `ios/`. GitHub's hosted Mac runs Xcode to build it. You can manage this from Windows. The simulator check needs no Apple credentials; installing through TestFlight and publishing require an active Apple Developer team and permission to manage certificates and App Store Connect. Being invited to someone else's account does not necessarily grant these permissions.
+Weekdeck's iPhone code lives in `ios/`. GitHub's hosted Mac runs Xcode to build it. You can manage this from Windows. Builds require iOS/iPadOS 16.4 or later, matching the web runtime baseline. The simulator check needs no Apple credentials; installing through TestFlight and publishing require an active Apple Developer team and permission to manage certificates and App Store Connect. Being invited to someone else's account does not necessarily grant these permissions.
 
 ## 1. Register Weekdeck
 
@@ -18,7 +18,7 @@ To create a certificate yourself, use the OpenSSL included with Git for Windows.
 ```bash
 mkdir -p .ios-signing
 openssl genrsa -aes256 -out .ios-signing/distribution.key 2048
-openssl req -new -key .ios-signing/distribution.key -out .ios-signing/distribution.csr -subj '/CN=Weekdeck Distribution/emailAddress=weekdeckdev@gmail.com'
+MSYS_NO_PATHCONV=1 openssl req -new -key .ios-signing/distribution.key -out .ios-signing/distribution.csr -subj '/CN=Weekdeck Distribution/emailAddress=weekdeckdev@gmail.com'
 ```
 
 Choose and retain a strong private-key password. Upload only `distribution.csr` when creating an **Apple Distribution** certificate in the Apple developer portal. Put the downloaded `.cer` into `.ios-signing/distribution.cer`, then run:

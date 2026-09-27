@@ -23,7 +23,7 @@ APP=$(/usr/libexec/PlistBuddy -c 'Print Entitlements:application-identifier' "$R
 mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/.appstoreconnect/private_keys"
 cp "$RUNNER_TEMP/weekdeck.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$UUID.mobileprovision"
 printf '%s' "$ASC_KEY_BASE64" | base64 --decode > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
-xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Weekdeck.xcarchive" DEVELOPMENT_TEAM="$IOS_TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY='Apple Distribution' PROVISIONING_PROFILE_SPECIFIER="$UUID" MARKETING_VERSION=0.3.0 CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" archive
+xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Weekdeck.xcarchive" DEVELOPMENT_TEAM="$IOS_TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY='Apple Distribution' PROVISIONING_PROFILE_SPECIFIER="$UUID" IPHONEOS_DEPLOYMENT_TARGET=16.4 MARKETING_VERSION=0.3.0 CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" archive
 EXPORT="$RUNNER_TEMP/weekdeck-export.plist"
 /usr/libexec/PlistBuddy -c 'Clear dict' "$EXPORT"
 /usr/libexec/PlistBuddy -c 'Add method string app-store-connect' "$EXPORT"

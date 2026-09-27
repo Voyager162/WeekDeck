@@ -35,7 +35,7 @@ jobs:
       - run: npm run check
       - run: npm run ios:sync
       - name: Build iPhone simulator app
-        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/DerivedData CODE_SIGNING_ALLOWED=NO MARKETING_VERSION=0.3.0 CURRENT_PROJECT_VERSION=${{ github.run_number }} build
+        run: xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/DerivedData CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=16.4 MARKETING_VERSION=0.3.0 CURRENT_PROJECT_VERSION=${{ github.run_number }} build
       - name: Launch simulator and capture iPhone screen
         shell: bash
         run: |
