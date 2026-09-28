@@ -1,11 +1,132 @@
 import { test, expect, type Page } from '@playwright/test';
-import { dateKey } from '../src/domain';
+import { dateKey, shiftDate } from '../src/domain';
 import { calendarMidnight } from '../src/planner/calendarTime';
 import { blockFromSlot, emptyPlanner, weekDates, weekOf } from '../src/planner/model';
 
 const week = weekOf(dateKey(new Date()));
 const dates = weekDates(week);
+test('an unavailable rollover time leaves the planner editable and the original intact', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ timezoneId: 'America/Los_Angeles' });
+  try {
+    const page = await context.newPage();
+    const data = emptyPlanner();
+    data.preferences.weekStart = 0;
+    data.preferences.timeZone = 'America/Los_Angeles';
+    data.blocks = [
+      {
+        ...blockFromSlot('Early plan', 'blue', { day: '2026-03-01', start: 150, end: 210 }),
+        startAt: calendarMidnight('2026-03-01', 'America/Los_Angeles') + 150 * 60000,
+        endAt: calendarMidnight('2026-03-01', 'America/Los_Angeles') + 210 * 60000,
+      },
+    ];
+    await page.clock.setFixedTime(new Date('2026-03-08T12:00:00-07:00'));
+    await page.addInitScript(
+      (data) => localStorage.setItem('weekdeck.planner.v2', JSON.stringify(data)),
+      data,
+    );
+    await open(page);
+    await expect(page.getByRole('alert')).toContainText('unavailable');
+    await expect(page.getByRole('button', { name: 'New block', exact: true })).toBeEnabled();
+    const stored = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('weekdeck.planner.v2')!),
+    );
+    expect(stored.blocks).toEqual(data.blocks);
+  } finally {
+    await context.close();
+  }
+});
+async function historyAction(page: Page, name: 'Undo' | 'Redo') {
+  if ((page.viewportSize()?.width ?? 1440) <= 600)
+    await page.getByRole('button', { name: 'More options', exact: true }).click();
+  await page.getByRole('button', { name, exact: true }).click();
+}
+
+test('current week rolls forward on resume without changing existing future plans', async ({
+  page,
+}) => {
+  const prior = shiftDate(week, -7);
+  const data = emptyPlanner();
+  data.blocks = [
+    {
+      ...blockFromSlot('Carry forward', 'blue', { day: prior, start: 600, end: 660 }),
+      completed: true,
+    },
+  ];
+  data.days[prior] = { enabled: true, start: 480, end: 1080 };
+  await page.addInitScript((data) => {
+    if (!localStorage.getItem('weekdeck.planner.v2'))
+      localStorage.setItem('weekdeck.planner.v2', JSON.stringify(data));
+  }, data);
+  await open(page);
+  await expect(
+    page.getByRole('button', { name: 'Carry forward, 10 AM to 11 AM', exact: true }),
+  ).toHaveCount(1);
+  await expect(page.locator('.scheduled-block.completed')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: `Start hours ${week}` })).toHaveText('8 AM');
+  const future = shiftDate(week, 7);
+  await page.getByRole('button', { name: 'Next week', exact: true }).click();
+  await add(page, 'Planned ahead', future);
+  await page.getByTitle('Go to this week').click();
+  await page.clock.setFixedTime(new Date(`${future}T12:00:00`));
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(
+    page.getByRole('button', { name: 'Planned ahead, 9 AM to 10 AM', exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole('button', { name: 'Carry forward, 10 AM to 11 AM', exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: 'Delete Planned ahead', exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole('region', { name: 'Weekly planner' })).toBeVisible();
+  await expect(page.locator('.scheduled-block')).toHaveCount(0);
+});
+
+for (const width of [320, 390])
+  test(`phone day actions stay accessible in the simplified layout at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await open(page);
+    await page
+      .getByRole('navigation', { name: 'Select day', exact: true })
+      .getByRole('button')
+      .first()
+      .click();
+    await add(page, 'Phone plan', dates[0]);
+    await expect(page.locator('.board-head')).not.toBeVisible();
+    await expect(page.locator('.history-actions')).not.toBeVisible();
+    const schedule = (await page.locator('.timeline-scroll').boundingBox())!;
+    expect(schedule.height).toBeGreaterThan(530);
+    await page.getByRole('button', { name: 'More options', exact: true }).click();
+    await page.screenshot({ path: `test-results/phone-actions-${width}.png` });
+    await page.getByRole('button', { name: 'Copy day', exact: true }).click();
+    await page.getByRole('checkbox', { name: /Tuesday/ }).check();
+    await page.getByRole('button', { name: 'Copy to 1 day', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page
+      .getByRole('navigation', { name: 'Select day', exact: true })
+      .getByRole('button')
+      .nth(1)
+      .click();
+    await expect(page.getByRole('button', { name: /^Phone plan,/ })).toBeVisible();
+    await page.getByRole('button', { name: 'More options', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove day', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove day', exact: true }).click();
+    await expect(
+      page.getByRole('navigation', { name: 'Select day' }).getByRole('button'),
+    ).toHaveCount(6);
+    await historyAction(page, 'Undo');
+    await expect(
+      page.getByRole('navigation', { name: 'Select day' }).getByRole('button'),
+    ).toHaveCount(7);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+  });
 test('clock times survive travel and edits across time zones', async ({ browser }) => {
+  test.setTimeout(90000);
   const data = emptyPlanner();
   data.preferences.timeZone = 'America/Los_Angeles';
   data.days[dates[0]] = { enabled: true, start: 960, end: 1305 };
@@ -38,7 +159,7 @@ test('clock times survive travel and edits across time zones', async ({ browser 
         page.getByRole('button', { name: 'Travel plan, 4 PM to 9:45 PM', exact: true }),
       ).toHaveCount(1);
       await page.getByRole('button', { name: 'Resize end of Travel plan' }).press('ArrowUp');
-      await page.getByRole('button', { name: 'Undo', exact: true }).click();
+      await historyAction(page, 'Undo');
       await page.reload();
       await expect(
         page.getByRole('button', { name: 'Travel plan, 4 PM to 9:45 PM', exact: true }),
@@ -164,11 +285,11 @@ test('older Pacific schedule can be restored in Austin without rewriting blocks'
     await expect(
       page.getByRole('button', { name: 'Older plan, 4 PM to 9:45 PM', exact: true }),
     ).toHaveCount(1);
-    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await historyAction(page, 'Undo');
     await expect(
       page.getByRole('button', { name: 'Older plan, 6 PM to 11:45 PM', exact: true }),
     ).toHaveCount(1);
-    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await historyAction(page, 'Redo');
     await page.reload();
     await expect(
       page.getByRole('button', { name: 'Older plan, 4 PM to 9:45 PM', exact: true }),
@@ -230,6 +351,7 @@ test('phone swipes on timing handles scroll without editing and cancelled holds 
     await expect(start).toHaveText('9:30 AM');
     await client.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
     await expect(start).toHaveText('9 AM');
+    await page.getByRole('button', { name: 'More options', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
   } finally {
     await context.close();
@@ -451,7 +573,7 @@ test('rejects overlapping edits and copies; replacement and undo are atomic', as
   await page.getByRole('button', { name: 'Copy to 1 day' }).click();
   await expect(page.getByRole('button', { name: /^Monday work,/ })).toHaveCount(2);
   await expect(page.getByRole('button', { name: /^Tuesday study,/ })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await historyAction(page, 'Undo');
   await expect(page.getByRole('button', { name: /^Monday work,/ })).toHaveCount(1);
   await expect(page.getByRole('button', { name: /^Tuesday study,/ })).toHaveCount(1);
   await page.getByRole('button', { name: `Start hours ${dates[0]}` }).press('ArrowDown');
@@ -525,13 +647,13 @@ for (const width of [1440, 768, 390, 320]) {
     await page.getByRole('button', { name: /^Read two chapters,/ }).click();
     await page.getByRole('button', { name: 'Delete block', exact: true }).click();
     await expect(page.locator('.scheduled-block')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await historyAction(page, 'Undo');
     await expect(page.locator('.scheduled-block')).toHaveCount(1);
     await page.getByRole('button', { name: 'Delete Read two chapters', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect(page.locator('.scheduled-block')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Undo', exact: true }).click();
-    await page.getByRole('button', { name: 'Redo', exact: true }).click();
+    await historyAction(page, 'Undo');
+    await historyAction(page, 'Redo');
     await expect(page.locator('.scheduled-block')).toHaveCount(0);
   });
 }
@@ -645,7 +767,7 @@ for (const width of [1440, 390]) {
     ).toBeVisible();
     await page.mouse.up();
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await historyAction(page, 'Undo');
     await expect(
       page.getByRole('button', { name: 'Upper, 9 AM to 10 AM', exact: true }),
     ).toBeVisible();
@@ -694,7 +816,7 @@ for (const width of [1440, 390]) {
       page.getByRole('button', { name: 'Lower, 10:15 AM to 11 AM', exact: true }),
     ).toBeVisible();
     await expect(handle).toHaveCount(0);
-    await page.getByRole('button', { name: 'Undo', exact: true }).click();
+    await historyAction(page, 'Undo');
     const lower = page.getByRole('button', { name: 'Resize start of Lower', exact: true });
     const lowerRect = (await lower.boundingBox())!;
     await drag(
@@ -787,7 +909,7 @@ test('day hours, keyboard-copy to multiple days, remove and restore', async ({ p
   await page.getByRole('button', { name: 'Remove Monday', exact: true }).click();
   await page.getByRole('button', { name: 'Remove day', exact: true }).click();
   await expect(page.locator('[data-lane]')).toHaveCount(6);
-  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await historyAction(page, 'Undo');
   await expect(page.locator('[data-lane]')).toHaveCount(7);
   await expect(page.getByRole('button', { name: /^Work session,/ })).toHaveCount(3);
 });
@@ -847,7 +969,7 @@ test('clipboard snapshot, Command shortcuts, replacement and typing isolation', 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: /^Original Monday,/ })).toHaveCount(1);
   await expect(page.getByRole('button', { name: /^Old Tuesday,/ })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await historyAction(page, 'Undo');
   await expect(page.getByRole('button', { name: /^Old Tuesday,/ })).toHaveCount(1);
   await page.getByRole('button', { name: /^Edited Monday,/ }).click();
   await page.getByLabel('Notes').focus();
@@ -884,13 +1006,13 @@ test('shared hours persist across weeks, detach on resize, and undo atomically',
   await expect(page.getByRole('switch', { name: 'Shared day hours' })).not.toBeChecked();
   await expect(page.getByLabel('Shared start time')).toHaveValue('08:00');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await historyAction(page, 'Undo');
   await expect(start).toHaveText('8 AM');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('tab', { name: 'Planner', exact: true }).click();
   await expect(page.getByRole('switch', { name: 'Shared day hours' })).toBeChecked();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await historyAction(page, 'Redo');
   await page.reload();
   await expect(start).toHaveText('8:15 AM');
   await expect(page.getByRole('button', { name: `Start hours ${dates[1]}` })).toHaveText('8 AM');

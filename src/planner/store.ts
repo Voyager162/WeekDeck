@@ -14,13 +14,16 @@ import {
 } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
 import { firebase } from '../firebase';
-import { dayRange, shiftDate, type Block } from '../domain';
+import { dateKey, dayRange, shiftDate, type Block } from '../domain';
+import { ensureCloudWeek } from './cloudRollover';
+import { rollLocalWeek, touchedWeeks } from './rollover';
 import { schedulePreferences } from './sharing';
 import { deviceTimeZone, displayBlock, storeBlock, validTimeZone } from './calendarTime';
 import {
   defaultPreferences,
   defaultTemplates,
   emptyPlanner,
+  weekOf,
   type DayConfig,
   type PlannerData,
   type Preferences,
@@ -60,7 +63,7 @@ function apply(data: PlannerData, changes: Change[]): PlannerData {
   }
   return next;
 }
-export function usePlanner(user: User | null, week: string) {
+export function usePlanner(user: User | null, week: string, today = dateKey(new Date())) {
   const [data, setData] = useState<PlannerData>(emptyPlanner);
   const [localZone, setLocalZone] = useState(deviceTimeZone);
   const current = useRef(data);
@@ -95,18 +98,30 @@ export function usePlanner(user: User | null, week: string) {
     if (user) return;
     try {
       const stored = localStorage.getItem(localKey);
-      const initial = stored ? JSON.parse(stored) : emptyPlanner();
+      let initial = stored ? (JSON.parse(stored) as PlannerData) : emptyPlanner();
       if (!stored)
         initial.blocks = JSON.parse(localStorage.getItem('timeblocker.preview.v1') || '[]');
       if (!validTimeZone(initial.preferences.timeZone))
         initial.preferences.timeZone = deviceTimeZone();
+      const local = initial.preferences.timeZone!;
+      if (week === weekOf(today, initial.preferences.weekStart)) {
+        try {
+          const rolled = rollLocalWeek(
+            { ...initial, blocks: initial.blocks.map((b) => displayBlock(b, local)) },
+            week,
+          );
+          initial = { ...rolled, blocks: rolled.blocks.map((b) => storeBlock(b, local)) };
+        } catch (error) {
+          setError(error instanceof Error ? error.message : 'This week could not be rolled over.');
+        }
+      }
       localStorage.setItem(localKey, JSON.stringify(initial));
       setData(initial);
       setReady(true);
     } catch {
       setError('Local data could not be loaded.');
     }
-  }, [user]);
+  }, [user, week, today]);
   useEffect(() => {
     if (!user || !firebase) return;
     let active = true;
@@ -120,7 +135,7 @@ export function usePlanner(user: User | null, week: string) {
     const loaded = new Set<string>();
     const mark = (key: string) => {
       loaded.add(key);
-      if (loaded.size === 4) setReady(true);
+      if (active && loaded.size === 5) setReady(true);
     };
     const prefs = doc(db, ...base, 'settings', 'planner');
     initialization.current ??= runTransaction(db, async (transaction) => {
@@ -147,10 +162,14 @@ export function usePlanner(user: User | null, week: string) {
           });
       }
     });
-    void initialization.current.catch((error) => {
-      initialization.current = null;
-      fail(error);
-    });
+    void initialization.current
+      .then(() => ensureCloudWeek(db, user.uid, week, today))
+      .then(() => mark('rollover'))
+      .catch((error) => {
+        initialization.current = null;
+        fail(error);
+        mark('rollover');
+      });
     const start = dayRange(shiftDate(week, -2))[0],
       end = dayRange(shiftDate(week, 9))[0];
     const unsubs = [
@@ -218,7 +237,7 @@ export function usePlanner(user: User | null, week: string) {
       active = false;
       unsubs.forEach((unsub) => unsub());
     };
-  }, [user, week]);
+  }, [user, week, today]);
   async function write(changes: Change[]) {
     if (!ready || writing.current)
       throw new Error('Please wait for the current changes to finish.');
@@ -229,6 +248,15 @@ export function usePlanner(user: User | null, week: string) {
     try {
       if (!user) {
         const next = apply(current.current, changes);
+        next.weeks = {
+          ...next.weeks,
+          ...Object.fromEntries(
+            touchedWeeks(changes, current.current.preferences.weekStart).map((week) => [
+              week,
+              true as const,
+            ]),
+          ),
+        };
         next.preferences.timeZone ??= zone;
         const stored = { ...next, blocks: next.blocks.map((block) => storeBlock(block, zone)) };
         localStorage.setItem(localKey, JSON.stringify(stored));
@@ -236,6 +264,11 @@ export function usePlanner(user: User | null, week: string) {
         setData(stored);
       } else {
         const batch = writeBatch(firebase!.db);
+        for (const week of touchedWeeks(changes, current.current.preferences.weekStart))
+          batch.set(doc(firebase!.db, 'users', user.uid, 'weeks', week), {
+            week,
+            updatedAt: serverTimestamp(),
+          });
         for (const change of changes) {
           if (change.kind === 'settings')
             batch.set(doc(firebase!.db, 'users', user.uid, 'settings', 'shared'), {

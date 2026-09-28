@@ -19,6 +19,100 @@ import {
 import { captureDay, dayChanges, pasteDays, settingsChanges } from '../src/planner/changes';
 import type { Change } from '../src/planner/store';
 import type { PlannerData } from '../src/planner/model';
+import { copyWeek, rollLocalWeek, touchedWeeks } from '../src/planner/rollover';
+
+describe('weekly rollover', () => {
+  const source = '2026-09-21',
+    target = '2026-09-28';
+  function planned() {
+    const data = emptyPlanner();
+    data.blocks = [
+      {
+        ...blockFromSlot('Study', 'rose', { day: source, start: 960, end: 1305 }),
+        completed: true,
+        notes: 'Chapter 4',
+      },
+    ];
+    data.days[source] = { enabled: true, start: 960, end: 1305 };
+    data.days['2026-09-22'] = { enabled: false, start: 540, end: 1020 };
+    return data;
+  }
+  it('copies matching weekdays and hours, resets completion and keeps the original', () => {
+    const data = planned(),
+      next = rollLocalWeek(data, target);
+    expect(next.blocks).toHaveLength(2);
+    expect(next.blocks[0]).toEqual(data.blocks[0]);
+    expect(next.blocks[1]).toMatchObject({
+      title: 'Study',
+      notes: 'Chapter 4',
+      color: 'rose',
+      completed: false,
+      startAt: atMinute(target, 960),
+      endAt: atMinute(target, 1305),
+    });
+    expect(next.blocks[1].id).not.toBe(data.blocks[0].id);
+    expect(next.days[target]).toEqual(data.days[source]);
+    expect(next.days['2026-09-29'].enabled).toBe(false);
+    expect(data.weeks).toBeUndefined();
+  });
+  it('does not duplicate, replace existing plans, or refill deliberately cleared weeks', () => {
+    const data = planned(),
+      next = rollLocalWeek(data, target);
+    expect(rollLocalWeek(next, target)).toBe(next);
+    const cleared = { ...next, blocks: data.blocks, days: data.days };
+    expect(rollLocalWeek(cleared, target).blocks).toHaveLength(1);
+    data.blocks.push(
+      blockFromSlot('Already planned', 'blue', { day: target, start: 600, end: 660 }),
+    );
+    expect(rollLocalWeek(data, target).blocks).toEqual(data.blocks);
+  });
+  it('continues the most recent week after an absence, including an intentionally empty week', () => {
+    const data = planned();
+    expect(rollLocalWeek(data, '2026-10-12').blocks[1].startAt).toBe(atMinute('2026-10-12', 960));
+    data.weeks = { '2026-10-05': true };
+    expect(rollLocalWeek(data, '2026-10-12').blocks).toHaveLength(1);
+  });
+  it('respects Sunday weeks and shared hours', () => {
+    const data = planned();
+    data.preferences.weekStart = 0;
+    data.preferences.dayHours = { start: 480, end: 1080, linked: true, version: 'shared' };
+    const next = rollLocalWeek(data, '2026-09-27');
+    expect(next.blocks[1].startAt).toBe(atMinute(target, 960));
+    expect(next.days[target].start).toBe(480);
+  });
+  it('moves calendar times rather than adding seven elapsed days across DST', () => {
+    const data = emptyPlanner();
+    data.blocks = [blockFromSlot('Morning', 'teal', { day: '2026-03-02', start: 540, end: 600 })];
+    expect(copyWeek(data, '2026-03-02', '2026-03-09').blocks[0].startAt).toBe(
+      atMinute('2026-03-09', 540),
+    );
+  });
+  it('marks both sides of moved or deleted blocks', () => {
+    const before = planned().blocks[0],
+      after = { ...before, startAt: atMinute(target, 960), endAt: atMinute(target, 1305) };
+    expect(touchedWeeks([{ kind: 'blocks', id: before.id, before, after }], 1)).toEqual([
+      source,
+      target,
+    ]);
+    expect(touchedWeeks([{ kind: 'blocks', id: before.id, before }], 1)).toEqual([source]);
+  });
+  it('does not silently normalize nonexistent daylight-saving times', () => {
+    const originalZone = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    try {
+      const data = emptyPlanner();
+      data.preferences.weekStart = 0;
+      data.preferences.timeZone = 'America/Los_Angeles';
+      data.blocks = [blockFromSlot('Early', 'blue', { day: '2026-03-01', start: 150, end: 210 })];
+      expect(() => rollLocalWeek(data, '2026-03-08')).toThrow('unavailable');
+      expect(data.blocks).toHaveLength(1);
+      expect(data.weeks).toBeUndefined();
+    } finally {
+      if (originalZone === undefined) delete process.env.TZ;
+      else process.env.TZ = originalZone;
+    }
+  });
+});
 
 const day = '2026-09-21';
 const block = (start: number, end: number) => blockFromSlot('Work', 'blue', { day, start, end });

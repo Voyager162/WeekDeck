@@ -41,6 +41,7 @@ export type Preferences = {
   };
 };
 export type PlannerData = {
+  weeks?: Record<string, true>;
   blocks: Block[];
   templates: Template[];
   days: Record<string, DayConfig>;

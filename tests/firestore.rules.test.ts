@@ -43,6 +43,45 @@ afterAll(async () => {
 });
 
 describe('private user schedules', () => {
+  it('validates private rollover markers and denies access by other users', async () => {
+    const db = env.authenticatedContext('alice').firestore();
+    const ref = doc(db, 'users/alice/weeks/2026-09-28');
+    await assertSucceeds(setDoc(ref, { week: '2026-09-28', updatedAt: serverTimestamp() }));
+    await assertSucceeds(getDoc(ref));
+    await assertSucceeds(getDocs(collection(db, 'users/alice/weeks')));
+    await assertSucceeds(updateDoc(ref, { updatedAt: serverTimestamp() }));
+    for (const value of [
+      {},
+      { updatedAt: 'now' },
+      { updatedAt: Timestamp.fromMillis(1) },
+      { updatedAt: serverTimestamp(), owner: 'alice' },
+      { week: '2026-09-29', updatedAt: serverTimestamp() },
+      { week: '2026-09-28', updatedAt: 'now' },
+      { week: '2026-09-28', updatedAt: Timestamp.fromMillis(1) },
+    ])
+      await assertFails(setDoc(ref, value));
+    await assertFails(
+      setDoc(doc(db, 'users/alice/weeks/not-a-date'), {
+        week: 'not-a-date',
+        updatedAt: serverTimestamp(),
+      }),
+    );
+    for (const other of [
+      env.authenticatedContext('bob').firestore(),
+      env.unauthenticatedContext().firestore(),
+    ]) {
+      const target = doc(other, ref.path);
+      await assertFails(getDoc(target));
+      await assertFails(getDocs(collection(other, 'users/alice/weeks')));
+      await assertFails(setDoc(target, { updatedAt: serverTimestamp() }));
+      await assertFails(deleteDoc(target));
+    }
+    await env.withSecurityRulesDisabled(async (context) =>
+      setDoc(doc(context.firestore(), 'accountDeletions/alice'), { requestedAt: Timestamp.now() }),
+    );
+    await assertFails(updateDoc(ref, { updatedAt: serverTimestamp() }));
+    await assertSucceeds(deleteDoc(ref));
+  });
   it('validates the private account calendar zone', async () => {
     const db = env.authenticatedContext('alice').firestore();
     const ref = doc(db, 'users/alice/settings/planner');

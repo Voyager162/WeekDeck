@@ -8,7 +8,9 @@ A React + TypeScript time-blocking planner with Firebase account sync. Browsers 
 
 Install Node.js 24 LTS, run `npm ci`, then `npm run dev`. The existing project configuration is described in [Firebase project](docs/FIREBASE_PROJECT.md). Without Firebase variables, the app uses a separate browser-local preview. Partial configuration is an error, not a silent fallback.
 
-The planner supports draggable/resizable blocks, presets, exact day copy/paste, shared day hours, themes, responsive phone layouts, account deletion, realtime Firestore syncing, and read-only schedule sharing by verified email. See [schedule sharing](docs/SHARING.md) for invitations, week-only/all-weeks access, and revocation.
+The planner supports draggable/resizable blocks, presets, exact day copy/paste, automatic weekly rollover, shared day hours, themes, responsive phone layouts, account deletion, realtime Firestore syncing, and read-only schedule sharing by verified email. See [schedule sharing](docs/SHARING.md) for invitations, week-only/all-weeks access, and revocation.
+
+New, untouched weeks inherit the previous plan when opened or resumed. Weekdays, clock times and day hours are preserved; completion checks reset. Existing plans and deliberately cleared weeks are never replaced. On phones, the day selector leads directly into the schedule; copy/remove-day and undo/redo are under More options.
 
 ## Phone reminders
 

@@ -17,6 +17,8 @@ import {
   ChevronRight,
   Cloud,
   CloudOff,
+  Copy,
+  Ellipsis,
   Layers2,
   LogOut,
   Plus,
@@ -25,6 +27,7 @@ import {
   Undo2,
   X,
   UserRound,
+  Trash2,
 } from 'lucide-react';
 import { type User } from 'firebase/auth';
 import { signOutWithReminders } from '../pwa';
@@ -61,6 +64,7 @@ type Dialog =
   | { kind: 'copy'; day: string; target?: string }
   | { kind: 'remove'; day: string }
   | { kind: 'settings'; tab?: string }
+  | { kind: 'actions' }
   | null;
 export function WeekPlanner({
   user,
@@ -71,7 +75,7 @@ export function WeekPlanner({
   onAccount: () => void;
   onPrivacy: () => void;
 }) {
-  const today = dateKey(new Date());
+  const [today, setToday] = useState(() => dateKey(new Date()));
   const sharing = useSharing(user);
   const [sharedId, setSharedId] = useState<string | null>(null);
   const shared = sharing.incoming.find((s) => s.id === sharedId && s.status === 'accepted');
@@ -79,7 +83,7 @@ export function WeekPlanner({
     [weekStart, setWeekStart] = useState<0 | 1>(1);
   const week = weekOf(anchor, weekStart),
     dates = weekDates(week);
-  const store = usePlanner(user, week),
+  const store = usePlanner(user, week, today),
     { data, busy, ready, error } = store;
   const [selectedDay, setSelectedDay] = useState(today),
     [library, setLibrary] = useState(() => window.innerWidth > 900);
@@ -121,6 +125,27 @@ export function WeekPlanner({
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
   );
+  useEffect(() => {
+    const refresh = () => {
+      const next = dateKey(new Date());
+      if (next === today) return;
+      if (weekOf(anchor, weekStart) === weekOf(today, weekStart)) {
+        setAnchor(next);
+        setSelectedDay(next);
+        setArmed(null);
+        setDialog(null);
+      }
+      setToday(next);
+    };
+    const timer = setInterval(refresh, 30000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [today, anchor, weekStart]);
   useEffect(() => {
     const dismissOutside = (event: Event) => {
       const menu = daysMenu.current;
@@ -281,7 +306,7 @@ export function WeekPlanner({
       const rect = element.getBoundingClientRect();
       if (
         !rect.width ||
-        (viewport && (p.x < viewport.left || p.x >= viewport.right)) ||
+        (viewport && viewport.width > 0 && (p.x < viewport.left || p.x >= viewport.right)) ||
         p.x < rect.left ||
         p.x >= rect.right ||
         p.y < Math.max(rect.top, timeline?.top ?? 0) ||
@@ -386,6 +411,7 @@ export function WeekPlanner({
             </span>
             <IconButton
               label="Notification settings"
+              className="desktop-control"
               onClick={() => setDialog({ kind: 'settings', tab: 'notifications' })}
             >
               <Bell size={18} />
@@ -401,6 +427,7 @@ export function WeekPlanner({
             {user && (
               <IconButton
                 label={`Sign out ${user.email}`}
+                className="desktop-control"
                 onClick={() => perform(signOutWithReminders())}
               >
                 <LogOut size={18} />
@@ -515,6 +542,14 @@ export function WeekPlanner({
                 </div>
               </div>
               <div className="toolbar-actions">
+                <IconButton
+                  label="More options"
+                  className="mobile-options"
+                  disabled={!ready || busy}
+                  onClick={() => setDialog({ kind: 'actions' })}
+                >
+                  <Ellipsis size={20} />
+                </IconButton>
                 <div className="history-actions">
                   <IconButton
                     label="Undo"
@@ -575,9 +610,7 @@ export function WeekPlanner({
                   onClick={() => setSelectedDay(day)}
                 >
                   <span>
-                    {new Date(`${day}T12:00`)
-                      .toLocaleDateString([], { weekday: 'short' })
-                      .slice(0, 1)}
+                    {new Date(`${day}T12:00`).toLocaleDateString([], { weekday: 'short' })}
                   </span>
                   <strong>{new Date(`${day}T12:00`).getDate()}</strong>
                   <i className={dayBlocks(data.blocks, day).length ? 'has-blocks' : ''} />
@@ -708,6 +741,53 @@ export function WeekPlanner({
           onDelete={removeBlock}
           onClose={() => setDialog(null)}
         />
+      )}
+      {dialog?.kind === 'actions' && (
+        <Modal
+          title={
+            activeDay
+              ? new Date(`${activeDay}T12:00`).toLocaleDateString([], {
+                  weekday: 'long',
+                  month: 'short',
+                  day: 'numeric',
+                })
+              : 'This week'
+          }
+          onClose={() => setDialog(null)}
+        >
+          <div className="mobile-action-list">
+            <button
+              disabled={!activeDay}
+              onClick={() => setDialog({ kind: 'copy', day: activeDay })}
+            >
+              <Copy size={19} />
+              Copy day
+            </button>
+            <button
+              disabled={!activeDay}
+              onClick={() => setDialog({ kind: 'remove', day: activeDay })}
+            >
+              <Trash2 size={19} />
+              Remove day
+            </button>
+            <div className="mobile-action-history">
+              <button
+                disabled={!store.canUndo || busy}
+                onClick={() => perform(store.undo().then(() => setDialog(null)))}
+              >
+                <Undo2 size={19} />
+                Undo
+              </button>
+              <button
+                disabled={!store.canRedo || busy}
+                onClick={() => perform(store.redo().then(() => setDialog(null)))}
+              >
+                <Redo2 size={19} />
+                Redo
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
       {dialog?.kind === 'preset' && (
         <TemplateEditor

@@ -45,7 +45,7 @@ export async function deleteAccount(user: User, password: string, onLocked: () =
     }
   }
   // The deletion marker blocks writes from every device while cleanup is in progress.
-  for (const name of ['blocks', 'templates', 'days']) {
+  for (const name of ['blocks', 'templates', 'days', 'weeks']) {
     while (true) {
       const documents = await getDocs(
         query(collection(firebase.db, 'users', user.uid, name), limit(400)),

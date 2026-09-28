@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { dateKey } from '../src/domain';
+import { dateKey, shiftDate } from '../src/domain';
 import { weekDates, weekOf } from '../src/planner/model';
 
 async function login(page: Page, email: string, signup = false) {
@@ -31,6 +31,67 @@ async function verifiedAccount(email: string) {
   });
   expect(verified.ok, await verified.text()).toBeTruthy();
 }
+
+test('new weeks roll over once across devices and keep cleared weeks empty', async ({
+  browser,
+}) => {
+  test.setTimeout(90000);
+  const first = await browser.newContext({ timezoneId: 'America/Los_Angeles' });
+  const second = await browser.newContext({ timezoneId: 'America/Chicago' });
+  try {
+    const a = await first.newPage(),
+      b = await second.newPage();
+    const email = `rollover-${Date.now()}@example.test`;
+    const currentWeek = weekOf(dateKey(new Date()));
+    const nextWeek = shiftDate(currentWeek, 7);
+    await login(a, email, true);
+    await a.getByRole('button', { name: 'New block', exact: true }).click();
+    await a.getByLabel('Block name').fill('Weekly study');
+    await a.getByLabel('Day', { exact: true }).selectOption(currentWeek);
+    await a.getByLabel('Start', { exact: true }).fill('10:00');
+    await a.getByLabel('End', { exact: true }).fill('11:00');
+    await a.getByRole('button', { name: 'Save block', exact: true }).click();
+    await expect(a.getByRole('dialog')).toHaveCount(0);
+    await a.getByRole('button', { name: 'Weekly study, 10 AM to 11 AM', exact: true }).click();
+    await a.getByRole('switch', { name: 'Completed' }).check();
+    await a.getByRole('button', { name: 'Save block', exact: true }).click();
+    await expect(a.getByRole('dialog')).toHaveCount(0);
+    await a.getByRole('button', { name: `Start hours ${currentWeek}` }).press('ArrowUp');
+    await expect(a.getByRole('button', { name: `Start hours ${currentWeek}` })).toHaveText(
+      '8:45 AM',
+    );
+    await login(b, email);
+    await a.clock.install({ time: new Date(`${nextWeek}T12:00:00-07:00`) });
+    await b.clock.install({ time: new Date(`${nextWeek}T12:00:00-07:00`) });
+    await Promise.all([a.reload(), b.reload()]);
+    for (const page of [a, b]) {
+      await expect(page.getByRole('region', { name: 'Weekly planner' })).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: 'Weekly study, 10 AM to 11 AM', exact: true }),
+      ).toHaveCount(1);
+      await expect(page.locator('.scheduled-block.completed')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: `Start hours ${nextWeek}` })).toHaveText(
+        '8:45 AM',
+      );
+      await expect(page.getByRole('alert')).toHaveCount(0);
+    }
+    await a.getByRole('button', { name: 'Delete Weekly study', exact: true }).click();
+    await expect(b.locator('.scheduled-block')).toHaveCount(0);
+    await Promise.all([a.reload(), b.reload()]);
+    await expect(a.getByRole('region', { name: 'Weekly planner' })).toBeVisible();
+    await expect(b.getByRole('region', { name: 'Weekly planner' })).toBeVisible();
+    await expect(a.locator('.scheduled-block')).toHaveCount(0);
+    await expect(b.locator('.scheduled-block')).toHaveCount(0);
+    await a.getByRole('button', { name: 'Previous week' }).click();
+    await expect(a.locator('.scheduled-block.completed')).toHaveCount(1);
+    await expect(
+      a.getByRole('button', { name: 'Weekly study, 10 AM to 11 AM', exact: true }),
+    ).toHaveCount(1);
+  } finally {
+    await first.close();
+    await second.close();
+  }
+});
 
 test('account calendar keeps clock times across travel and another device', async ({ browser }) => {
   test.setTimeout(90000);
@@ -324,7 +385,7 @@ test('account deletion requires the password and removes all weeks across device
     await expect(a.getByRole('heading', { name: 'Welcome back' })).toBeVisible();
     await expect(b.getByRole('heading', { name: 'Finish deleting your account' })).toBeVisible();
     await expect(b.locator('.scheduled-block')).toHaveCount(0);
-    for (const collection of ['blocks', 'templates', 'days', 'settings']) {
+    for (const collection of ['blocks', 'templates', 'days', 'weeks', 'settings']) {
       const response = await request.get(
         `http://127.0.0.1:8080/v1/projects/demo-timeblocker/databases/(default)/documents/users/${uid}/${collection}`,
         admin,

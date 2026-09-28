@@ -1945,6 +1945,32 @@ input[type='checkbox'] {
     height: 66px;
   }
 }
+.mobile-options {
+  display: none;
+}
+.mobile-action-list {
+  display: grid;
+  gap: 4px;
+}
+.mobile-action-list button {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 48px;
+  padding: 12px;
+  border-radius: 6px;
+  text-align: left;
+}
+.mobile-action-list button:hover:not(:disabled) {
+  background: var(--subtle);
+}
+.mobile-action-history {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
 @media (max-width: 600px) {
   .app-shell,
   .app-shell.library-open {
@@ -1975,7 +2001,17 @@ input[type='checkbox'] {
     display: none;
   }
   .header-right .icon-button {
-    width: 32px;
+    width: 44px;
+    height: 44px;
+  }
+  .header-right .desktop-control,
+  .history-actions {
+    display: none;
+  }
+  .mobile-options {
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
   }
   .icon-rail {
     display: flex;
@@ -2018,35 +2054,48 @@ input[type='checkbox'] {
     height: 34px;
   }
   .week-toolbar {
-    padding: 18px 17px 14px;
-    align-items: start;
-    gap: 5px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 8px 16px 4px;
+    align-items: center;
+    gap: 4px 8px;
+  }
+  .week-heading {
+    display: contents;
   }
   .week-heading h1 {
-    font-size: 25px;
-    gap: 9px;
+    font-size: 20px;
+    grid-row: 1;
+    grid-column: 1;
   }
   .week-navigation {
-    margin-top: 8px;
+    margin-top: 0;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: space-between;
     gap: 0;
   }
   .week-date {
-    font-size: 11px;
-    padding: 4px 1px;
+    font-size: 12px;
+    min-height: 40px;
+    padding: 4px 8px;
   }
   .week-navigation .icon-button {
-    width: 20px;
+    width: 40px;
+    height: 40px;
   }
   .toolbar-actions {
+    grid-column: 2;
+    grid-row: 1;
     gap: 4px;
     padding-top: 0;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: flex-end;
-    max-width: 110px;
+    max-width: none;
   }
   .new-block {
-    min-height: 34px;
-    width: 34px;
+    min-height: 40px;
+    width: 40px;
     padding: 0;
     order: -1;
   }
@@ -2066,7 +2115,7 @@ input[type='checkbox'] {
     height: 34px;
   }
   .hidden-days summary {
-    padding: 5px;
+    padding: 11px;
     font-size: 10px;
   }
   .hidden-days summary span {
@@ -2074,7 +2123,7 @@ input[type='checkbox'] {
   }
   .mobile-days {
     display: flex;
-    padding: 0 15px 15px;
+    padding: 0 12px 10px;
     gap: 5px;
   }
   .mobile-days button {
@@ -2119,7 +2168,7 @@ input[type='checkbox'] {
     color: #172b22;
   }
   .board-head {
-    min-height: 68px;
+    display: none;
   }
   .timezone-label {
     flex-basis: 52px;
@@ -2225,12 +2274,13 @@ input[type='checkbox'] {
     top: 1px;
   }
   .planner-footer {
-    min-height: 46px;
-    padding: 0 16px env(safe-area-inset-bottom);
-    gap: 10px;
+    min-height: 0;
+    height: 0;
+    padding: 0;
+    border: 0;
   }
-  .planner-footer > span {
-    font-size: 10px;
+  .planner-footer > span:not(.sr-only) {
+    display: none;
   }
   dialog {
     padding: 22px 20px;
